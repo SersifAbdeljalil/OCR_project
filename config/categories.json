@@ -14,7 +14,7 @@
         "\\bttc\\b",
         "\\b(montant|total) ht\\b"
       ],
-      "champs": ["fournisseur", "date_facture", "numero", "montant_ht", "tva", "montant_ttc"],
+      "champs": ["fournisseur", "date_facture", "numero", "montant_ht", "tva", "montant_ttc", "ice"],
       "nom_fichier": {"prefixe": "facture", "parties": ["fournisseur", "date_facture", "numero"]}
     },
     {

@@ -462,6 +462,45 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   Le pic dépasse encore 1,5 Go : le contrôle a lieu APRÈS une page (+150 à 300 Mo par page).
 - FAIT : détection de l'arabe vérifiée : f06 = 99,3 %, f05 = 40,9 %, f01 = 0 % (les formes
   de présentation étaient déjà comptées depuis b7). Seuil passé à 70 %.
+- FAIT (étape b10a) : `src/extractor.py`, extraction REGEX seule (pas de LLM).
+  - Motifs dans `config/extraction.json` (rien en dur) : numero, date_facture, date
+    (générique), date_signature, date_obtention, date_naissance (« né(e) le »), montant_ht,
+    tva, montant_ttc (« total TTC », puis « net à payer »), ice (15 chiffres), rib
+    (24 chiffres), iban, cin. `charger_config()` vérifie types, choix et regex.
+    Registre : « ice » ajouté aux champs des factures.
+  - Ligne par ligne (`lignes_du_document(extraction, pages_ocr)` : natif confiance None,
+    OCR avec confiance). Étiquette cherchée sur la ligne normalisée EN GARDANT LA LONGUEUR
+    (`normaliser_ligne`) ; valeur juste après sur la même ligne, sinon sur la ligne
+    suivante SEULEMENT si elle ne contient que la valeur (évite « TVA : » +
+    « Non applicable (art. 91 CGI) » -> 91). Sur la même ligne, un montant n'est accepté
+    que s'il a des décimales ou une devise (évite un « 9 » isolé dans du bruit OCR).
+    « ignorer » retire le taux « 20 % » des lignes de TVA.
+  - Plusieurs candidats (règle documentée dans le fichier de configuration) : on garde
+    l'étiquette la plus prioritaire trouvée (ex. « Total TVA » avant « TVA », « date de
+    facture » avant « date ») ; puis « premier » (en-tête : numéro, dates), « dernier »
+    (totaux) ou « somme » (lignes de TVA distinctes) ; alerte si les valeurs diffèrent.
+  - Provenance par champ : ChampExtrait(valeur [masquée dans repr], etiquette, ligne, page,
+    confiance = min(ligne étiquette, ligne valeur), nb_candidats, methode="regex").
+    Ligne OCR < 0,90 -> alerte + validation obligatoire. Factures : verifier_totaux ->
+    statut_totaux « ok / ecart / manquant ». Alertes sans aucune valeur.
+  - Champs libres (fournisseur, titulaire, objet, parties...) : pas de motif, pour b10b (LLM).
+  - `tests/test_extractor.py` : 50 tests (440 au total).
+  - `tests/mesurer_extraction_synthetique.py` (10 factures FICTIVES, vérité terrain) :
+    48/60 champs exacts (80 %), et AUCUNE valeur fausse (tous les échecs sont « absent »).
+    Par champ : date 9/10, numéro 8/10, HT 7/10, TVA 8/10, TTC 8/10, ICE 8/10.
+    Échecs : f06 (tout en arabe, 6 champs : étiquettes arabes non gérées, MVP français),
+    f08 (scan dégradé, 5 champs : « 1CE… », « NEE-… », HT lu avant son étiquette, TVA
+    « 410,000 » ambiguë), f09 (HT : « T0tal HT » mal lu par l'OCR). Ces 3 factures partent
+    en validation. Hors f06 et f08 : 47/48.
+    Deux bugs trouvés et corrigés grâce à cette mesure (motif du numéro qui coupait
+    « FA- » ; chiffre isolé lu comme montant).
+  - `tests/verifier_extraction_champs.py` sur tests/docs_test/ (catégorie = mots-clés seuls,
+    navigateur fermé) : 59 champs trouvés, 55 absents ; totaux ok 6, écart 1, manquant 2 ;
+    validation 4 / 14 ; pic RAM OCR 1688 Mo (1 relance).
+    rip.pdf (banque) : RIB non trouvé (présentation du RIB inconnue sans lire le document).
+  - ATTENTION : tests/docs_test/ contient maintenant les 10 factures fictives en plus de
+    4 documents réels (america, bac, RIB CDG, rip) ; le LISEZMOI recommandait de les garder
+    dans tests/docs_synthetiques/ seulement.
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
@@ -509,5 +548,6 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b7-bis) FAIT : zone titre + corrections du registre.
    b8) FAIT : src/llm.py.
    b9) FAIT : src/classifier.py.
-   Suite : src/extractor.py, src/pipeline.py,
+   b10a) FAIT : src/extractor.py, partie regex.
+   Suite : b10b (extractor.py, champs libres par LLM), src/pipeline.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).
