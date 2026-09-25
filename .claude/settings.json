@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./tests/docs_test/**)",
+      "Read(./Folder_Entree/**)",
+      "Read(./Folder_Sortie/**)",
+      "Read(./data/**)"
+    ]
+  }
+}

@@ -41,6 +41,10 @@ MVP pragmatique, 100 % LOCAL, budget 0 €.
 6. Rangement + doublons (_1, _2). Original copié vers Folder_Sortie, puis déplacé
    vers Folder_Entree/Traites/.
 7. Interface Streamlit : image + tableau éditable, pour les documents de A_Valider/.
+8. Dossiers de sortie : les dossiers de sortie ne sont jamais créés à l'avance. L'agent
+   (filer.py) les crée à la demande, quand le premier document d'un type arrive, et
+   uniquement avec les noms exacts de la liste fixe définie dans config.yaml. Un type
+   inconnu va dans Autres/ ou A_Valider/, jamais dans un dossier inventé.
 
 ## Règle de confiance (décision A, validée)
 | Situation | Confiance |
@@ -73,9 +77,18 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 - FAIT : `test_jev.py` (JEV via OpenRouter) : fonctionne jusqu'à l'erreur 402
   (compte sans crédits). Mis de côté pour la v2. `.env` contient OPENROUTER_API_KEY :
   ne jamais l'afficher ni le lire à voix haute.
-- EN COURS : `test_classification.py` (regex + Phi-4-mini + règle de confiance).
-  Testé hors ligne (regex seules et LLM simulé) : 4 documents rangés, 2 en A_Valider,
-  0 mal rangé. RESTE À FAIRE : le lancer sur cette machine avec le vrai Ollama.
+- FAIT : `test_classification.py` (regex + règle métier + Phi-4-mini + règle de confiance),
+  lancé avec le vrai Ollama.
+  - Mode normal : 5 rangés, 1 en A_Valider (recu_paiement), 0 mal rangé, 22,8 s.
+  - Mode `--forcer-llm` : 4 rangés, 2 en A_Valider, 0 mal rangé, ~19 s/document
+    (dont 6-7 s de chargement à cause de keep_alive=0).
+    Erreurs de Phi-4-mini : attestation_reussite_deug -> « attestation » (attendu diplome),
+    recu_paiement -> « facture » (attendu autre). La règle de confiance les a bloquées.
+  - Règle métier regex : « attestation de réussite » + nom de diplôme -> diplome (0.95, sans LLM).
+- FAIT : `.claude/settings.json` interdit à Claude Code la lecture de `.env`,
+  `tests/docs_test/`, `Folder_Entree/`, `Folder_Sortie/` et `data/`.
+- FAIT : dossier `tests/docs_test/` créé (documents d'exemple, ignoré par git).
+  Les dossiers de sortie ne sont PAS créés (voir architecture, point 8).
 
 ## Questions encore ouvertes (à poser avant l'étape concernée)
 - B : diplômes hors DEUG/Licence/Master/Doctorat (Bac, BTS, DUT...) -> Diplomes/Autres/ ?
@@ -83,7 +96,7 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   (seuls .txt/.json sont masqués). Acceptable pour le MVP ?
 
 ## Prochaines étapes (une à la fois)
-1. Lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.
+1. FAIT : lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.
 2. Transformer le test en modules : src/config.py, src/schemas.py, src/masking.py,
    src/normalize.py, src/filer.py, src/extract_text.py, src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
