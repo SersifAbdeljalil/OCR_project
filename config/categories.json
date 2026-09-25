@@ -14,7 +14,8 @@
         "\\bttc\\b",
         "\\b(montant|total) ht\\b"
       ],
-      "champs": ["fournisseur", "date_facture", "numero", "montant_ht", "tva", "montant_ttc"]
+      "champs": ["fournisseur", "date_facture", "numero", "montant_ht", "tva", "montant_ttc"],
+      "nom_fichier": {"prefixe": "facture", "parties": ["fournisseur", "date_facture", "numero"]}
     },
     {
       "nom": "diplomes",
@@ -33,7 +34,8 @@
         "\\b(confere|decerne)\\b",
         "\\bgrade\\b"
       ],
-      "champs": ["titulaire", "intitule", "etablissement", "date_obtention", "mention"]
+      "champs": ["titulaire", "intitule", "etablissement", "date_obtention", "mention"],
+      "nom_fichier": {"prefixe": "diplome", "parties": ["sous_dossier", "titulaire"]}
     },
     {
       "nom": "attestations",
@@ -49,7 +51,8 @@
         "\\bpour servir et valoir\\b",
         "\\bde (travail|scolarite|salaire)\\b"
       ],
-      "champs": ["emetteur", "beneficiaire", "objet", "date"]
+      "champs": ["emetteur", "beneficiaire", "objet", "date"],
+      "nom_fichier": {"prefixe": "attestation", "parties": ["sous_dossier", "beneficiaire"]}
     },
     {
       "nom": "contrats",
@@ -61,7 +64,8 @@
         "\\barticle \\d+\\b",
         "\\bles parties\\b"
       ],
-      "champs": ["parties", "objet", "date_signature", "duree"]
+      "champs": ["parties", "objet", "date_signature", "duree"],
+      "nom_fichier": {"prefixe": "contrat", "parties": ["objet", "date_signature"]}
     },
     {
       "nom": "banque",
@@ -74,7 +78,8 @@
         "\\brib\\b",
         "\\bagence\\b"
       ],
-      "champs": ["banque", "titulaire", "periode", "objet", "rib", "iban"]
+      "champs": ["banque", "titulaire", "periode", "objet", "rib", "iban"],
+      "nom_fichier": {"prefixe": "banque", "parties": ["banque", "periode"]}
     }
   ],
   "regles_metier": [

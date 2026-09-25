@@ -49,6 +49,19 @@ MVP pragmatique, 100 % LOCAL, budget 0 €.
 5. Normalisation déterministe Python (pas de LLM) : dates ISO, montants, HT+TVA=TTC.
 6. Rangement + doublons (_1, _2). Original copié vers Folder_Sortie, puis déplacé
    vers Folder_Entree/Traites/.
+   Nommage (décision du 2026-09-25) : modèle « nom_fichier » par catégorie dans le registre
+   (préfixe + parties ; minuscules, sans accents, sans espaces, parties séparées par _,
+   partie absente omise) :
+     factures     : facture_<fournisseur>_<date_facture>_<numero>
+     diplomes     : diplome_<sous-dossier>_<titulaire>
+     attestations : attestation_<sous-dossier>_<beneficiaire>
+     contrats     : contrat_<objet>_<date_signature>
+     banque       : banque_<banque>_<periode>
+     découverte / autres : <categorie>_<titre>_<personne>
+   L'original, le .txt et le .json partagent le même nom de base (même suffixe _1).
+   A_Valider/ : nom d'origine nettoyé + <nom>.json qui donne la raison.
+   Folder_Entree/ et Folder_Sortie/ : à la racine du projet (constantes de config.py,
+   passées en paramètre à filer.py).
 7. Interface Streamlit : image + tableau éditable, pour les documents de A_Valider/.
 8. Dossiers de sortie : les dossiers de sortie ne sont jamais créés à l'avance. L'agent
    (filer.py) les crée à la demande, quand le premier document d'un type arrive, et
@@ -185,6 +198,23 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   - `tests/test_normalize.py` : 63 tests à l'origine.
   - Decimal : schemas.py accepte Decimal ; `DocumentSortie.vers_json()` écrit les montants
     comme NOMBRES à 2 décimales (240.50), arrondi au centime supérieur à partir de 0,005.
+- FAIT (étape b4) : `src/filer.py` + `nom_fichier` dans le registre (vérifié par config.py).
+  - `ranger_document(original, doc, alertes)` : A_Valider/ si necessite_validation_humaine
+    ou catégorie absente du registre ; type « autres » -> Folder_Sortie/Autres/ ;
+    sinon catégorie + sous-dossier (choisir_sous_dossier). Dossiers créés seulement si absents.
+  - `envoyer_a_valider(original, raison, doc=None)` : aussi pour les fichiers illisibles.
+    Le .json de raison contient : source, date, raison, alertes, type_propose,
+    confiance_classification (PAS les champs ni le texte).
+  - Noms : a-z 0-9 - seulement (aucun caractère interdit Windows), noms réservés
+    (CON, NUL, COM1...) suffixés « _doc », chemin complet <= 259 caractères (troncature
+    en gardant la place de « _999 »), doublons _1, _2 comparés en minuscules, y compris
+    dans Traites/. Original .json/.txt : copie nommée <base>_original.<ext>.
+  - Sécurité de l'original : écrire .txt/.json -> copier -> vérifier (taille + SHA-256)
+    -> seulement alors déplacer vers Traites/. Toute erreur avant la vérification :
+    fichiers produits retirés, original intact, alerte. Déplacement raté : fichiers rangés
+    gardés, original laissé dans Folder_Entree, alerte. Les alertes ne contiennent que le
+    type d'erreur (jamais le message système, qui contient des chemins).
+  - `tests/test_filer.py` : 38 tests dans tmp_path (221 au total).
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -209,7 +239,7 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b1) FAIT : config/categories.json + src/config.py + src/schemas.py.
    b2) FAIT : src/masking.py.
    b3) FAIT : src/normalize.py.
-   Suite :
-   src/normalize.py, src/filer.py, src/extract_text.py, src/ocr_worker.py,
+   b4) FAIT : src/filer.py.
+   Suite : src/extract_text.py, src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).

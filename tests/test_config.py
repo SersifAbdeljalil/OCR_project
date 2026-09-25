@@ -12,8 +12,8 @@ import re
 import pytest
 
 from src.config import (ErreurRegistre, champs_attendus, charger_registre,
-                        choisir_sous_dossier, normaliser, trouver_categorie,
-                        verifier_registre)
+                        choisir_sous_dossier, modele_nom_fichier, normaliser,
+                        trouver_categorie, verifier_registre)
 
 
 # --- Outils ----------------------------------------------------------------
@@ -163,6 +163,33 @@ def test_sous_dossier_en_double_refuse(registre):
 def test_autres_avec_mots_cles_refuse(registre):
     trouver_categorie(registre, "diplomes")["sous_dossiers"][-1]["mots_cles"] = [r"\bbts\b"]
     assert erreurs_contiennent(registre, "Autres ne doit pas avoir de mots-cles")
+
+
+def test_nom_fichier_absent_refuse(registre):
+    del registre["categories"][0]["nom_fichier"]
+    assert erreurs_contiennent(registre, "nom_fichier absent")
+
+
+def test_nom_fichier_partie_inconnue_refusee(registre):
+    registre["categories"][0]["nom_fichier"]["parties"].append("titulaire")  # pas un champ de facture
+    assert erreurs_contiennent(registre, "partie de nom_fichier inconnue 'titulaire'")
+
+
+def test_nom_fichier_sous_dossier_sans_sous_dossiers_refuse(registre):
+    registre["categories"][0]["nom_fichier"]["parties"].insert(0, "sous_dossier")
+    assert erreurs_contiennent(registre, "inconnue 'sous_dossier'")
+
+
+def test_nom_fichier_prefixe_invalide(registre):
+    registre["categories"][0]["nom_fichier"]["prefixe"] = "Facturé"
+    assert erreurs_contiennent(registre, "prefixe de nom_fichier invalide")
+
+
+def test_modele_nom_fichier(registre):
+    assert modele_nom_fichier(registre, "diplomes") == \
+        {"prefixe": "diplome", "parties": ["sous_dossier", "titulaire"]}
+    assert modele_nom_fichier(registre, "bulletin_paie") == \
+        {"prefixe": "bulletin_paie", "parties": ["titre", "personne"]}
 
 
 def test_toutes_les_erreurs_sont_listees(registre):

@@ -22,6 +22,10 @@ from pathlib import Path          # chemins independants du dossier de lancement
 RACINE = Path(__file__).resolve().parent.parent          # dossier OCR_PROJECT
 CHEMIN_REGISTRE = RACINE / "config" / "categories.json"
 
+DOSSIER_ENTREE = RACINE / "Folder_Entree"   # documents a traiter
+DOSSIER_SORTIE = RACINE / "Folder_Sortie"   # documents ranges
+DOSSIER_TRAITES = "Traites"                 # sous-dossier de Folder_Entree
+
 SEUIL_CONFIANCE = 0.90          # >= 0.90 -> rangement automatique (regle A)
 DOSSIER_A_VALIDER = "A_Valider"  # dossiers speciaux, hors registre
 DOSSIER_AUTRES = "Autres"
@@ -129,6 +133,31 @@ def _verifier_sous_dossiers(sous_dossiers, ou: str, erreurs: list) -> None:
         erreurs.append(f"{ou} : sous-dossier {DOSSIER_AUTRES!r} obligatoire")
 
 
+PARTIE_SOUS_DOSSIER = "sous_dossier"   # dans nom_fichier : le nom du sous-dossier choisi
+
+
+def _verifier_nom_fichier(cat: dict, ou: str, erreurs: list) -> None:
+    """nom_fichier = {"prefixe": "facture", "parties": ["fournisseur", ...]} :
+    prefixe normalise ; chaque partie est un champ de la categorie, ou
+    "sous_dossier" (seulement si la categorie a des sous-dossiers)."""
+    modele = cat.get("nom_fichier")
+    if not isinstance(modele, dict):
+        erreurs.append(f"{ou} : nom_fichier absent")
+        return
+    if not isinstance(modele.get("prefixe"), str) or not MOTIF_NOM.match(modele["prefixe"]):
+        erreurs.append(f"{ou} : prefixe de nom_fichier invalide")
+    autorisees = set(cat.get("champs") or [])
+    if cat.get("sous_dossiers"):
+        autorisees.add(PARTIE_SOUS_DOSSIER)
+    parties = modele.get("parties")
+    if not isinstance(parties, list) or not parties:
+        erreurs.append(f"{ou} : nom_fichier sans parties")
+        return
+    for partie in parties:
+        if partie not in autorisees:
+            erreurs.append(f"{ou} : partie de nom_fichier inconnue {partie!r}")
+
+
 # --- 3. Verification du registre complet -----------------------------------
 def verifier_registre(registre: dict) -> list:
     """Renvoie la liste des problemes du registre (liste vide = registre valide)."""
@@ -178,6 +207,7 @@ def verifier_registre(registre: dict) -> list:
             erreurs.append(f"{ou} : mot-cle en double")
 
         _verifier_champs(cat.get("champs"), ou, erreurs)
+        _verifier_nom_fichier(cat, ou, erreurs)
 
     # Regles metier : categorie existante, motifs valides
     for j, regle in enumerate(registre["regles_metier"]):
@@ -229,6 +259,15 @@ def champs_attendus(registre: dict, nom_type: str) -> list:
     cat = trouver_categorie(registre, nom_type)
     base = cat["champs"] if cat else registre["champs_generiques"]
     return list(dict.fromkeys(base + registre["champs_sensibles"]))
+
+
+def modele_nom_fichier(registre: dict, nom_type: str) -> dict:
+    """Modele de nom de fichier d'un type. Categorie absente du registre
+    (decouverte, ou "autres") : <type>_<titre>_<personne>."""
+    cat = trouver_categorie(registre, nom_type)
+    if cat is not None:
+        return cat["nom_fichier"]
+    return {"prefixe": nom_type, "parties": ["titre", "personne"]}
 
 
 def choisir_sous_dossier(categorie: dict, texte: str):
