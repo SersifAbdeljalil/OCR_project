@@ -11,7 +11,7 @@ tout ce qui a été décidé dans la conversation claude.ai précédente.
 5. Vérifier que chaque fichier fonctionne (le lancer) avant de passer au suivant.
 6. Expliquer ce que fait chaque bloc de code ; commenter le code en français.
 7. Ne pas parler de Docker, WSL, Linux, GPU, ni de Sage 100 (hors périmètre).
-
+8. Ne jamais lire, afficher ni résumer le contenu des documents réels ou des fichiers de sortie. Les scripts de test n'affichent que des métriques et des noms de fichiers.
 ## Objectif
 Documents en vrac (PDF, DOCX, images) -> lire, classer, extraire les champs,
 ranger en `.txt` + `.json` dans des sous-dossiers. Validation humaine dans Streamlit.
