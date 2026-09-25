@@ -4,10 +4,10 @@ classifier.py - Classification d'un document : regles (rules.py) + moteur (LLM).
 Regle de confiance A (MODIFIEE, voir CLAUDE.md) :
     regle metier                          -> 0.95, sans moteur
     verdict "net"    + moteur d'accord    -> 0.95
-    verdict "net"    + moteur en desaccord -> 0.60
-    verdict "faible" + moteur d'accord    -> 0.90
-    tout le reste (egalite, aucun indice, desaccord, moteur en panne) -> 0.60
+    tout le reste (net + desaccord, faible meme avec accord, egalite,
+                   aucun indice, moteur en panne)             -> 0.60
     confiance OCR moyenne < 0.80          -> validation humaine OBLIGATOIRE
+    plus de 30 % de lettres arabes (texte natif) -> validation humaine OBLIGATOIRE
     confiance < 0.90                      -> validation humaine (A_Valider/)
 
 Categorie decouverte : si le moteur repond "autre", il propose un nom. Le nom est
@@ -32,14 +32,13 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from src.config import (MOTEUR_CLASSIFICATION, NOMS_RESERVES, SEUIL_CONFIANCE,
-                        SEUIL_CONFIANCE_OCR_DOCUMENT, DOSSIER_AUTRES,
+                        SEUIL_CONFIANCE_OCR_DOCUMENT, SEUIL_PART_ARABE, DOSSIER_AUTRES,
                         choisir_sous_dossier, normaliser, registre_par_defaut,
                         trouver_categorie)
-from src.rules import FAIBLE, NET, REGLE_METIER, SignauxQualite, analyser
+from src.rules import NET, REGLE_METIER, SignauxQualite, analyser
 
 # --- Valeurs de la regle A ---------------------------------------------------
 CONFIANCE_SURE = 0.95
-CONFIANCE_ACCORD_FAIBLE = 0.90
 CONFIANCE_DOUTE = 0.60
 AUTRE = "autre"                     # reponse du moteur hors registre
 SEUIL_SIMILARITE = 0.80             # nom propose "trop proche" au-dela
@@ -225,10 +224,15 @@ def classer(texte: str, registre: dict = None, moteur: MoteurClassification = No
     if ocr_douteux:
         r.raisons.append(f"confiance OCR moyenne {s.confiance_ocr_moyenne:.2f} "
                          f"< {SEUIL_CONFIANCE_OCR_DOCUMENT} : validation obligatoire")
+    # Signal de qualite : document en arabe (francais uniquement pour le MVP)
+    arabe = s.part_arabe > SEUIL_PART_ARABE
+    if arabe:
+        r.raisons.append(f"lettres arabes {s.part_arabe:.0%} > {SEUIL_PART_ARABE:.0%} : "
+                         "validation obligatoire")
 
     cat = trouver_categorie(registre, r.categorie) if r.categorie else None
     r.sous_dossier = choisir_sous_dossier(cat, texte) if cat else None
-    r.necessite_validation_humaine = (r.confiance < SEUIL_CONFIANCE or ocr_douteux
+    r.necessite_validation_humaine = (r.confiance < SEUIL_CONFIANCE or ocr_douteux or arabe
                                       or r.categorie is None
                                       or r.categorie_proposee is not None)
     return r
@@ -258,12 +262,10 @@ def _appliquer_regle_a(r: ResultatClassification, v, rep: ReponseMoteur, registr
         return
 
     accord = rep.categorie == v.categorie
-    if v.verdict == NET:
-        r.confiance = CONFIANCE_SURE if accord else CONFIANCE_DOUTE
-    elif v.verdict == FAIBLE:
-        r.confiance = CONFIANCE_ACCORD_FAIBLE if accord else CONFIANCE_DOUTE
-    else:                                          # egalite, aucun indice
-        r.confiance = CONFIANCE_DOUTE
+    # Seul "net" + accord range automatiquement. "faible" + accord reste a 0.60 :
+    # un document qui MENTIONNE un type (ex. un CV qui cite un diplome) ne doit pas
+    # etre range dans ce type sans validation humaine.
+    r.confiance = CONFIANCE_SURE if (v.verdict == NET and accord) else CONFIANCE_DOUTE
     # En desaccord, on garde la categorie des mots-cles quand elle existe (deterministe) ;
     # sinon celle du moteur. L'humain voit les deux dans les raisons.
     r.categorie = v.categorie if v.categorie else rep.categorie

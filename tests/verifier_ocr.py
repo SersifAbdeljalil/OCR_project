@@ -36,9 +36,9 @@ def main():
     lot = lancer_ocr(taches)                     # UN lot : modele charge une fois
     total = time.perf_counter() - debut
 
-    print(f"{'Fichier':<45} {'Pages':>5} {'s/page':>7} {'Lignes':>7} "
+    print(f"{'Fichier':<45} {'Pages':>5} {'Image max (px)':>15} {'s/page':>7} {'Lignes':>7} "
           f"{'Conf.moy':>9} {'<0,90':>6} {'Pic RAM':>9}  Erreurs")
-    print("-" * 105)
+    print("-" * 121)
     toutes_lignes = []
     for chemin in fichiers:
         pages = lot.pages_du_fichier(chemin)
@@ -54,7 +54,9 @@ def main():
         erreurs = [f"p{n}:{p.raison}" for n, p in sorted(pages.items())
                    if p.statut != STATUT_OK]
         nom = str(chemin.relative_to(DOSSIER))[:45]
-        print(f"{nom:<45} {len(pages):>5} {s_page:>7.1f} {len(lignes):>7} "
+        plus_grande = max(ok, key=lambda p: p.largeur * p.hauteur, default=None)
+        taille = f"{plus_grande.largeur}x{plus_grande.hauteur}" if plus_grande else "-"
+        print(f"{nom:<45} {len(pages):>5} {taille:>15} {s_page:>7.1f} {len(lignes):>7} "
               f"{conf:>9.3f} {sous_seuil:>6} {pic:>7.0f} Mo  {' '.join(erreurs) or '-'}")
 
     conf_globale = (sum(l.confiance for l in toutes_lignes) / len(toutes_lignes)

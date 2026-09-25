@@ -202,8 +202,37 @@ def test_charger_page_image_transparente_et_chemin_accentue(tmp_path):
     chemin = tmp_path / "reçu été.png"
     pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 30, 20), True)   # avec alpha
     pix.save(chemin)
-    image, largeur, hauteur, dpi = charger_page(str(chemin), 1)
+    image, largeur, hauteur, dpi, reduction = charger_page(str(chemin), 1)
     assert image.shape == (20, 30, 3) and (largeur, hauteur, dpi) == (30, 20, None)
+    assert reduction == 1.0
+
+
+def test_grande_photo_reduite_proportionnellement(tmp_path):
+    chemin = tmp_path / "photo.png"
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 4000, 3000), False)
+    pix.clear_with(255)
+    pix.save(chemin)
+    image, largeur, hauteur, dpi, reduction = charger_page(str(chemin), 1)
+    assert (largeur, hauteur) == (2500, 1875) and image.shape == (1875, 2500, 3)
+    assert reduction == 0.625 and dpi is None
+
+
+def test_pdf_grand_format_dpi_abaisse(tmp_path):
+    """Page A2 (1191 x 1684 pt) : a 200 dpi, 4678 px ; limite a 2500 px."""
+    doc = pymupdf.open()
+    doc.new_page(width=1191, height=1684)
+    doc.save(tmp_path / "a2.pdf")
+    image, largeur, hauteur, dpi, reduction = charger_page(str(tmp_path / "a2.pdf"), 1)
+    assert max(largeur, hauteur) <= 2500 and dpi < 200
+    assert abs(largeur / hauteur - 1191 / 1684) < 0.01      # proportions gardees
+
+
+def test_pdf_a4_inchange(tmp_path):
+    doc = pymupdf.open()
+    doc.new_page()                                          # A4
+    doc.save(tmp_path / "a4.pdf")
+    _, largeur, hauteur, dpi, reduction = charger_page(str(tmp_path / "a4.pdf"), 1)
+    assert dpi == 200 and reduction == 1.0 and hauteur == 2339
 
 
 def test_charger_page_hors_document(tmp_path):

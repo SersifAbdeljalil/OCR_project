@@ -6,10 +6,11 @@ $categories
 
 Règles :
 $regles
+- Un document qui MENTIONNE un diplôme, une facture ou un contrat n'est pas forcément de ce type : choisis la catégorie seulement si le document EST ce type. Sinon réponds autre et propose un nom.
 
 Réponds uniquement en JSON :
 - type_document : exactement une des catégories ci-dessus, ou « autre »
-- nom_propose : si type_document vaut « autre », un nom court (1 à 3 mots) décrivant ce type de document (par exemple : bulletin de paie, avis d'imposition) ; sinon null
+- nom_propose : si type_document vaut « autre », un nom court (1 à 3 mots) décrivant ce type de document ; sinon null
 
 DOCUMENT :
 <<<

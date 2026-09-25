@@ -96,11 +96,13 @@ MVP pragmatique, 100 % LOCAL, budget 0 €.
 | Règle métier (seule suffisante sans LLM) | 0.95, sans LLM |
 | Verdict « net » + Phi-4-mini d'accord | 0.95 |
 | Verdict « net » + Phi-4-mini en désaccord | 0.60 |
-| Verdict « faible » + Phi-4-mini d'accord | 0.90 |
+| Verdict « faible » + Phi-4-mini d'accord | 0.60 (décision b9 : ne range plus) |
 | Désaccord, égalité ou aucun indice regex | 0.60 |
+Seuls « net » + accord et une règle métier rangent automatiquement.
 Un verdict « net » ne suffit PLUS seul : le LLM confirme toujours.
 (« net » = >= 2 indices, un seul type, et au moins un mot-clé du type dans la zone titre.)
-Signal qualité : confiance OCR moyenne du document < 0.80 -> validation humaine.
+Signaux qualité : confiance OCR moyenne du document < 0.80 -> validation humaine ;
+texte natif avec plus de 30 % de lettres arabes -> validation humaine.
 Confiance >= 0.90 -> rangement automatique, sinon -> A_Valider/.
 On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 
@@ -430,6 +432,36 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     prompt : les exemples du prompt biaisent le moteur -> à retirer ; (3) la règle A
     modifiée a bien bloqué damand (net) et RIB CDG ; (4) pic RAM OCR 1896 Mo, proche
     de la limite de 2 Go.
+- FAIT (étape b9-bis) : décisions après b9.
+  - « faible » + moteur d'accord -> 0.60 (A_Valider). Pas de catégorie « cv » ajoutée à la
+    main : la découverte de catégorie passe par A_Valider.
+  - prompts/classification.txt : AUCUN exemple de catégorie inventée ; consigne ajoutée :
+    « Un document qui MENTIONNE un diplôme, une facture ou un contrat n'est pas forcément
+    de ce type : choisis la catégorie seulement si le document EST ce type. Sinon réponds
+    autre et propose un nom. »
+  - OCR : image limitée à MAX_COTE_PX = 2500 px sur le plus grand côté (PDF : dpi abaissé
+    pour un grand format ; image : réduction proportionnelle cv2 INTER_AREA ; champ
+    `reduction` dans PageOCR). Mesure AVANT / APRÈS sur le jeu de test : 1893 Mo / 1893 Mo,
+    AUCUN effet : toutes les images font déjà <= 2340 px (A4 à 200 dpi). Le pic MONTE
+    de page en page (1410 -> 1585 -> ... -> 1893 Mo) à taille d'image égale :
+    accumulation de mémoire dans le worker PaddleOCR. Piste non appliquée : relancer le
+    worker toutes les N pages.
+  - Texte natif > 30 % de lettres arabes (SEUIL_PART_ARABE) -> validation obligatoire.
+  - Tests : 391 au total.
+  - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
+      3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
+                          répond maintenant « autre » et propose « cv » ; les 2 autres :
+                          moteur toujours « diplomes », bloqués par la nouvelle règle
+      bac-2-1           : moteur diplomes -> autre (« cachet »), toujours A_Valider (OCR)
+      bac.pdf           : moteur diplomes -> attestations, toujours A_Valider (OCR)
+      cN.pdf            : moteur banque -> autre (« carte_d_identite »), A_Valider
+      demand eljadida   : proposition « avis_d_imposition » (exemple du prompt) -> « lettre »
+      damand a monsieur : proposition « demande_d_inscription » -> « candidature », A_Valider
+      america           : inchangé (autre, « confirmation_d_inscription »), A_Valider
+      6 rangés inchangés : 4 factures (0.95), deug.pdf et rip.pdf (règle métier)
+      RIB CDG, bac-1-1  : inchangés (A_Valider)
+    Bilan : 6 rangés (9 avant), 11 A_Valider (8 avant). OCR 45,8 s (pic 1894 Mo),
+    chargement 6,6 s, moteur 318 s pour 15 appels. Modèle déchargé : oui.
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.

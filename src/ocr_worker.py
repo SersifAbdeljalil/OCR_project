@@ -38,6 +38,7 @@ from src.config import DOSSIER_DATA, RACINE
 
 # --- Reglages --------------------------------------------------------------
 DPI = 200                    # rendu des pages PDF
+MAX_COTE_PX = 2500           # plus grand cote de l'image envoyee a PaddleOCR (RAM)
 THREADS = 2                  # 2 coeurs sur l'i3-1005G1
 LANGUE = "fr"                # modele "latin" de PaddleOCR
 DELAI_PAGE_S = 60            # au-dela, la page est abandonnee
@@ -69,6 +70,7 @@ class PageOCR:
     raison: str = None        # si erreur : type de probleme (jamais de texte)
     pic_ram_mo: float = 0.0   # pic de RAM du worker au moment de cette page
     orientation: int = None   # 0 ou 180 (page a l'envers) ; None si inconnue
+    reduction: float = 1.0    # image reduite pour respecter MAX_COTE_PX (1 = taille d'origine)
 
     @property
     def texte(self) -> str:
@@ -258,17 +260,24 @@ def pic_ram_mo() -> float:
     return round(c.PeakWorkingSetSize / 2**20, 1)
 
 
-def charger_page(fichier: str, page: int):
+def charger_page(fichier: str, page: int, max_cote: int = MAX_COTE_PX):
     """Image d'une page, au format attendu par PaddleOCR (tableau BGR).
-    PDF : rendu a 200 dpi. Image simple : lue directement (sa resolution d'origine).
+    PDF : rendu a 200 dpi, sauf si le plus grand cote depasse max_cote (grand
+    format) : le dpi est alors baisse. Image simple : lue directement puis, si
+    besoin, reduite proportionnellement a max_cote.
+    Renvoie (image, largeur, hauteur, dpi, reduction).
     Passer par PyMuPDF evite aussi le bug d'OpenCV avec les chemins accentues."""
+    import cv2
     import numpy as np
     import pymupdf
     with pymupdf.open(fichier) as doc:
         if not 1 <= page <= doc.page_count:
             raise IndexError("numero de page hors du document")
         if doc.is_pdf or doc.page_count > 1:        # PDF, ou TIFF multi-pages
-            pix, dpi = doc[page - 1].get_pixmap(dpi=DPI), DPI
+            p = doc[page - 1]
+            echelle = min(DPI / 72, max_cote / max(p.rect.width, p.rect.height))
+            pix = p.get_pixmap(matrix=pymupdf.Matrix(echelle, echelle))
+            dpi = round(echelle * 72)
         else:
             pix, dpi = pymupdf.Pixmap(fichier), None
     if pix.alpha:
@@ -276,7 +285,16 @@ def charger_page(fichier: str, page: int):
     if pix.n != 3:
         pix = pymupdf.Pixmap(pymupdf.csRGB, pix)     # gris / CMJN -> RGB
     rgb = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
-    return rgb[:, :, ::-1].copy(), pix.width, pix.height, dpi   # RGB -> BGR
+    bgr = rgb[:, :, ::-1].copy()                     # RGB -> BGR
+
+    # Reduction proportionnelle si l'image depasse encore max_cote (grande photo)
+    reduction = 1.0
+    hauteur, largeur = bgr.shape[:2]
+    if max(largeur, hauteur) > max_cote:
+        reduction = max_cote / max(largeur, hauteur)
+        largeur, hauteur = round(largeur * reduction), round(hauteur * reduction)
+        bgr = cv2.resize(bgr, (largeur, hauteur), interpolation=cv2.INTER_AREA)
+    return bgr, largeur, hauteur, dpi, round(reduction, 4)
 
 
 class _EspionAngles:
@@ -317,7 +335,7 @@ def main_worker(fichier_taches: str, fichier_resultats: str, threads: int) -> No
             debut = time.perf_counter()
             base = {"fichier": t["fichier"], "page": t["page"]}
             try:
-                image, largeur, hauteur, dpi = charger_page(t["fichier"], t["page"])
+                image, largeur, hauteur, dpi, reduction = charger_page(t["fichier"], t["page"])
                 if espion:
                     espion.angles = []
                 resultat = ocr.ocr(image, cls=True)
@@ -337,7 +355,8 @@ def main_worker(fichier_taches: str, fichier_resultats: str, threads: int) -> No
                 ecrire({**base, "statut": STATUT_OK, "lignes": lignes,
                         "duree_s": round(time.perf_counter() - debut, 2),
                         "largeur": largeur, "hauteur": hauteur, "dpi": dpi,
-                        "pic_ram_mo": pic_ram_mo(), "orientation": orientation})
+                        "pic_ram_mo": pic_ram_mo(), "orientation": orientation,
+                        "reduction": reduction})
             except Exception as err:
                 ecrire({**base, "statut": STATUT_ERREUR, "raison": type(err).__name__,
                         "duree_s": round(time.perf_counter() - debut, 2),

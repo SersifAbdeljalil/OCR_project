@@ -72,10 +72,12 @@ def test_net_et_moteur_en_desaccord_060():
     assert "moteur : contrats (desaccord)" in r.raisons
 
 
-def test_faible_et_moteur_d_accord_090():
+def test_faible_et_moteur_d_accord_060():
+    """Decision b9 : « faible » + accord ne suffit plus (ex. un CV qui cite un diplome)."""
     r = classer_avec(FACTURE_FAIBLE, MoteurSimule("factures"))
     assert r.verdict_regles == "faible"
-    assert (r.categorie, r.confiance, r.necessite_validation_humaine) == ("factures", 0.90, False)
+    assert (r.categorie, r.confiance, r.necessite_validation_humaine) == ("factures", 0.60, True)
+    assert "moteur : factures (accord)" in r.raisons
 
 
 def test_faible_et_moteur_en_desaccord_060():
@@ -113,6 +115,32 @@ def test_ocr_douteux_impose_la_validation():
 def test_ocr_a_080_pile_ne_bloque_pas():
     r = classer_avec(FACTURE_NETTE, MoteurSimule("factures"), confiances_ocr=[0.8, 0.8])
     assert not r.necessite_validation_humaine
+
+
+def test_texte_arabe_au_dela_de_30_pourcent():
+    natif = "شهادة الإجازة في الاقتصاد Licence"          # surtout des lettres arabes
+    r = classer_avec(FACTURE_NETTE, MoteurSimule("factures"), texte_natif=natif)
+    assert r.signaux.part_arabe > 0.30
+    assert r.confiance == 0.95 and r.necessite_validation_humaine
+    assert any(x.startswith("lettres arabes") for x in r.raisons)
+
+
+def test_texte_arabe_sous_30_pourcent():
+    natif = "Facture " * 20 + "شهادة"                     # 5 lettres arabes sur 145
+    r = classer_avec(FACTURE_NETTE, MoteurSimule("factures"), texte_natif=natif)
+    assert r.signaux.part_arabe < 0.30 and not r.necessite_validation_humaine
+
+
+def test_seuls_net_accord_et_regle_metier_rangent():
+    """Toutes les combinaisons verdict x reponse : seules 2 donnent >= 0.90."""
+    ranges = []
+    for texte in (FACTURE_NETTE, FACTURE_FAIBLE, EGALITE, AUCUN_INDICE, REUSSITE_DEUG):
+        for reponse in ("factures", "contrats", "autre"):
+            r = classer_avec(texte, MoteurSimule(reponse, "Nom Nouveau"))
+            if not r.necessite_validation_humaine:
+                ranges.append((r.verdict_regles, reponse))
+    assert set(ranges) == {("net", "factures"), ("regle metier", "factures"),
+                           ("regle metier", "contrats"), ("regle metier", "autre")}
 
 
 def test_regle_metier_mais_ocr_douteux():
@@ -222,6 +250,15 @@ def test_moteur_phi4_prompt_et_schema_depuis_le_registre():
     assert "attestation de reussite" in corps["prompt"]                    # regle metier
     assert corps["format"]["properties"]["type_document"]["enum"][-2:] == ["bulletin_paie", "autre"]
     assert "$" not in corps["prompt"]                                      # tout est rempli
+
+
+def test_prompt_sans_exemple_de_categorie_inventee_et_avec_consigne():
+    session = FausseSession(json.dumps({"type_document": "autre", "nom_propose": "x"}))
+    MoteurPhi4(client=ClientOllama(session=session)).classer("texte", REGISTRE)
+    prompt = session.posts[0]["prompt"]
+    assert "par exemple" not in prompt.lower()
+    assert "bulletin de paie" not in prompt and "avis d'imposition" not in prompt
+    assert "MENTIONNE un diplôme, une facture ou un contrat" in prompt
 
 
 def test_moteur_phi4_reponse_invalide():
