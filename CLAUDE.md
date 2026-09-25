@@ -498,9 +498,24 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     navigateur fermé) : 59 champs trouvés, 55 absents ; totaux ok 6, écart 1, manquant 2 ;
     validation 4 / 14 ; pic RAM OCR 1688 Mo (1 relance).
     rip.pdf (banque) : RIB non trouvé (présentation du RIB inconnue sans lire le document).
-  - ATTENTION : tests/docs_test/ contient maintenant les 10 factures fictives en plus de
-    4 documents réels (america, bac, RIB CDG, rip) ; le LISEZMOI recommandait de les garder
-    dans tests/docs_synthetiques/ seulement.
+  - tests/docs_test/ : les factures fictives y avaient été copiées par erreur ;
+    l'utilisateur remet ses documents réels (décision : fictives UNIQUEMENT dans
+    tests/docs_synthetiques/). Claude ne touche pas à docs_test.
+- FAIT (après b10a) : corrections générales de l'extraction regex.
+  - Tolérance OCR sur les ÉTIQUETTES seulement (`tolerer_ocr`, option
+    « tolerance_ocr_etiquettes » de config/extraction.json) : o -> [o0], i -> [i1l],
+    l -> [l1i], s -> [s5] sur les lettres littérales (codes \s \b, classes [...] et groupes
+    (?...) intacts). Les VALEURS restent strictes.
+  - Montant : ne commence jamais au milieu d'un mot ou d'un nombre (« 1 2O0,00 » ne donne
+    plus « 0,00 » : bug trouvé par le test « valeurs strictes ») ; devise collée acceptée.
+  - RIB marocain en 4 groupes 3 + 3 + 16 + 2 séparés par espaces, tabulations, barres,
+    « / » ou retours à la ligne (« lignes_suivantes » : 4 lignes au plus, faites
+    uniquement de chiffres et de séparateurs).
+  - Mesure docs_synthetiques/ : AVANT 48/60 -> APRÈS 50/60 (83 %), ZÉRO valeur fausse.
+    Gagnés : HT de f09 (« T0tal HT »), ICE de f08 (« 1CE… »). Restent : f06 (6, arabe),
+    f08 (4 : numéro « NEE-… », HT placé avant son étiquette, TVA « 410,000 » ambiguë,
+    TTC absent de l'OCR).
+  - Tests : 458 au total.
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur

@@ -11,8 +11,13 @@
     "de l'etiquette la plus prioritaire trouvee sont gardes.",
     "choix entre plusieurs candidats : 'premier' (en haut du document : en-tete),",
     "'dernier' (en bas : totaux), 'somme' (ex. plusieurs lignes de TVA).",
-    "ignorer : motif retire de la fin de ligne avant de chercher la valeur (ex. taux '20 %')."
+    "ignorer : motif retire de la fin de ligne avant de chercher la valeur (ex. taux '20 %').",
+    "tolerance_ocr_etiquettes : les lettres o, i, l, s des ETIQUETTES acceptent aussi",
+    "0, 1/l/i, 5 (confusions OCR). Les VALEURS restent strictes.",
+    "lignes_suivantes : (chiffres) nombre de lignes suivantes, faites seulement de chiffres",
+    "et de separateurs, qui peuvent completer la valeur (ex. RIB : 4 groupes sur 4 lignes)."
   ],
+  "tolerance_ocr_etiquettes": true,
   "champs": {
     "numero": {
       "type": "texte",
@@ -106,8 +111,9 @@
         "\\breleve\\s+d.identite\\s+bancaire\\s*:?",
         "\\br\\.?i\\.?b\\.?(?![a-z])\\s*:?"
       ],
-      "valeur": "\\d(?:[ .-]?\\d){23}(?!\\d)",
+      "valeur": "(?<!\\d)\\d{3}[\\s|/.-]*\\d{3}[\\s|/.-]*\\d{16}[\\s|/.-]*\\d{2}(?!\\d)|\\d(?:[ .-]?\\d){23}(?!\\d)",
       "longueur": 24,
+      "lignes_suivantes": 4,
       "choix": "premier"
     },
     "iban": {

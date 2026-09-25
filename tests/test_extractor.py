@@ -15,7 +15,8 @@ import pytest
 from src.config import charger_registre
 from src.extract_text import extraire
 from src.extractor import (ErreurConfigExtraction, LigneSource, charger_config,
-                           extraire_champs, lignes_du_document, normaliser_ligne)
+                           extraire_champs, lignes_du_document, normaliser_ligne,
+                           tolerer_ocr)
 from src.ocr_worker import LigneOCR, PageOCR
 
 REGISTRE = charger_registre()
@@ -233,6 +234,59 @@ def test_champs_libres_laisses_au_llm():
     """fournisseur, titulaire, objet... n'ont pas de motif : ils ne sont pas extraits ici."""
     r = extraire_texte(FACTURE)
     assert "fournisseur" not in r.champs
+
+
+# --- 5 bis. Tolerance OCR (etiquettes seulement) et RIB en 4 groupes ----------------
+@pytest.mark.parametrize("motif, attendu", [
+    (r"\btotal\s*ht", r"\bt[o0]ta[l1i]\s*ht"),
+    (r"\bi\.?c\.?e\.?(?![a-z])", r"\b[i1l]\.?c\.?e\.?(?![a-z])"),
+    (r"(?<![a-z])n\s?[°º]", r"(?<![a-z])n\s?[°º]"),             # classes et \s intacts
+    (r"\bdate\s+de\s+naissance", r"\bdate\s+de\s+na[i1l][s5][s5]ance"),
+])
+def test_tolerer_ocr(motif, attendu):
+    assert tolerer_ocr(motif) == attendu
+
+
+@pytest.mark.parametrize("ligne", ["T0tal HT : 980,00 DH", "TotaI HT : 980,00 DH",
+                                   "Tota1 HT : 980,00 DH"])
+def test_etiquette_mal_lue_par_l_ocr(ligne):
+    assert extraire_texte(ligne).valeurs()["montant_ht"] == Decimal("980.00")
+
+
+def test_ice_mal_lu_par_l_ocr():
+    assert extraire_texte("1CE000666777000088").valeurs()["ice"] == "000666777000088"
+
+
+def test_devise_collee_au_montant():
+    assert extraire_texte("Total TTC : 1 200,00DH").valeurs()["montant_ttc"] == Decimal("1200.00")
+
+
+def test_valeurs_restent_strictes():
+    """La tolerance ne s'applique JAMAIS aux valeurs : « 1 2O0,00 » n'est pas un montant."""
+    r = extraire_texte("Total HT : 1 2O0,00 DH\nICE : 0OO666777000088")
+    assert "montant_ht" not in r.champs and "ice" not in r.champs
+
+
+@pytest.mark.parametrize("texte", [
+    "RIB : 999 780 0000123456789012 34",
+    "RIB :\t999\t780\t0000123456789012\t34",
+    "RIB : 999 | 780 | 0000123456789012 | 34",
+    "RIB : 999/780/0000123456789012/34",
+    "RIB :\n999\n780\n0000123456789012\n34",
+    "RIB\n999 780\n0000123456789012 34",
+])
+def test_rib_en_quatre_groupes(texte):
+    assert extraire_texte(texte, "banque").valeurs()["rib"] == "999780000012345678901234"
+
+
+def test_rib_ne_prend_pas_une_ligne_de_texte():
+    """Les lignes suivantes ne completent la valeur que si elles ne contiennent que des chiffres."""
+    r = extraire_texte("RIB :\n999 780\nCompte n° 0000123456789012 34", "banque")
+    assert "rib" not in r.champs
+
+
+def test_rib_groupes_de_mauvaise_taille_refuse():
+    assert "rib" not in extraire_texte("RIB : 99 780 0000123456789012 34", "banque").champs
 
 
 # --- 6. Lignes du document et normalisation ----------------------------------------

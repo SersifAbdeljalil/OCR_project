@@ -38,14 +38,48 @@ TYPES = {"date", "montant", "texte", "chiffres"}
 CHOIX = {"premier", "dernier", "somme"}
 CHAMPS_TOTAUX = ("montant_ht", "tva", "montant_ttc")
 
-# Un montant tel qu'ecrit : 1 988,00 / 5.455,00 / 1234.56 / -150,00
+# Un montant tel qu'ecrit : 1 988,00 / 5.455,00 / 1234.56 / -150,00. Il ne commence
+# jamais au milieu d'un mot ou d'un nombre (« 2O0,00 » ne donne pas « 0,00 »).
 MOTIF_MONTANT = re.compile(
-    r"-?\d{1,3}(?:[   .,]\d{3})+(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?")
+    r"(?<![\w.,])(?:-?\d{1,3}(?:[   .,]\d{3})+(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?)"
+    r"(?!\d)")
 DEVISE_SEULE = r"\s*(?:dh|dhs|mad|dirhams?|eur|euros?|€)?\.?\s*"
 
 
 class ErreurConfigExtraction(ValueError):
     """config/extraction.json invalide."""
+
+
+# Tolerance OCR sur les ETIQUETTES seulement (jamais sur les valeurs) : l'OCR confond
+# souvent 0/O, 1/I/l et 5/S (ex. « T0tal HT », « 1CE »). Chaque lettre litterale d'une
+# etiquette (deja en minuscules) est remplacee par la classe de ses sosies.
+SOSIES_OCR = {"o": "[o0]", "i": "[i1l]", "l": "[l1i]", "s": "[s5]"}
+
+
+def tolerer_ocr(motif: str) -> str:
+    """Elargit les lettres litterales d'un motif d'etiquette. Ne touche ni aux codes
+    (\\s, \\b, \\d...), ni aux classes [...], ni aux groupes speciaux (?:, (?<!...)."""
+    sortie, i, dans_classe = [], 0, False
+    while i < len(motif):
+        c = motif[i]
+        if c == "\\":                               # code regex : recopie tel quel
+            sortie.append(motif[i:i + 2])
+            i += 2
+            continue
+        if c == "[" and not dans_classe:
+            dans_classe = True
+        elif c == "]" and dans_classe:
+            dans_classe = False
+        elif c == "(" and motif[i + 1:i + 2] == "?":  # (?:  (?!  (?<!  : recopie le prefixe
+            j = i + 2
+            while j < len(motif) and motif[j] in "<!=:":
+                j += 1
+            sortie.append(motif[i:j])
+            i = j
+            continue
+        sortie.append(c if dans_classe else SOSIES_OCR.get(c, c))
+        i += 1
+    return "".join(sortie)
 
 
 # --- 1. Configuration --------------------------------------------------------
@@ -56,6 +90,7 @@ def charger_config(chemin: Path = CHEMIN_CONFIG) -> dict:
     except (OSError, json.JSONDecodeError) as err:
         raise ErreurConfigExtraction(f"configuration illisible ({type(err).__name__})") from None
     erreurs, champs = [], {}
+    tolerance = brut.get("tolerance_ocr_etiquettes", True)
     for nom, c in brut.get("champs", {}).items():
         if c.get("type") not in TYPES:
             erreurs.append(f"{nom} : type inconnu {c.get('type')!r}")
@@ -69,7 +104,8 @@ def charger_config(chemin: Path = CHEMIN_CONFIG) -> dict:
         try:
             champs[nom] = {
                 **c,
-                "etiquettes_re": [re.compile(e) for e in c.get("etiquettes", [])],
+                "etiquettes_re": [re.compile(tolerer_ocr(e) if tolerance else e)
+                                  for e in c.get("etiquettes", [])],
                 "valeur_re": re.compile(c["valeur"]) if c.get("valeur") else None,
                 "ignorer_re": re.compile(c["ignorer"]) if c.get("ignorer") else None,
                 "choix": c.get("choix", "premier"),
@@ -179,13 +215,25 @@ def chercher_candidats(nom: str, conf: dict, lignes: list):
             m = etiquette.search(normalisees[i])
             if not m:
                 continue
-            valeur, al = _valeur(conf, ligne.texte[m.end():], ligne_seule=False)
+            reste = ligne.texte[m.end():]
+            valeur, al = _valeur(conf, reste, ligne_seule=False)
             j = i
-            if valeur is None and i + 1 < len(lignes):          # valeur a la ligne suivante
+            if valeur is None and conf.get("lignes_suivantes"):
+                # Valeur en plusieurs morceaux sur les lignes suivantes (ex. RIB en
+                # 4 groupes) : seulement des lignes faites de chiffres et separateurs
+                morceaux, k = [reste], i + 1
+                while (k < len(lignes) and k <= i + conf["lignes_suivantes"]
+                       and re.fullmatch(r"[\d\s|/.\-]+", lignes[k].texte)):
+                    morceaux.append(lignes[k].texte)
+                    k += 1
+                if k > i + 1:
+                    valeur, al2 = _valeur(conf, " ".join(morceaux), ligne_seule=False)
+                    j, al = k - 1, al + al2
+            elif valeur is None and i + 1 < len(lignes):        # valeur a la ligne suivante
                 valeur, al2 = _valeur(conf, lignes[i + 1].texte, ligne_seule=True)
                 j, al = i + 1, al + al2
             if valeur is not None:
-                confs = [c for c in (ligne.confiance, lignes[j].confiance) if c is not None]
+                confs = [l.confiance for l in lignes[i:j + 1] if l.confiance is not None]
                 candidats.append(Candidat(valeur, priorite, i, j, ligne.page,
                                           min(confs) if confs else None))
             else:
