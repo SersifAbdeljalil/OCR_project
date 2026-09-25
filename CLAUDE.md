@@ -361,6 +361,37 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
       11 autres fichiers     : inchangés
     Bilan : règle métier 2, net 6, faible 3, égalité 2, aucun indice 4.
     Sans LLM (nouvelle règle A) : seulement les 2 règles métier (deug.pdf, rip.pdf).
+  - Complément : noms complets dans les mots-clés des sous-dossiers (DEUG : « diplome
+    d'etudes universitaires generales » ; Licence : fondamentale, professionnelle,
+    d'etudes fondamentales ; Master : specialise, de recherche). Seul l'ajout DEUG change
+    un résultat (les autres contiennent déjà « licence » / « master »).
+- FAIT (étape b8) : `src/llm.py`, client Ollama UNIQUE (pas encore la classification).
+  - `ClientOllama` : /api/generate, format = schéma JSON, options num_ctx 2048, num_gpu 0,
+    temperature 0, stream false. keep_alive = 0 par défaut.
+  - Lot : `with client.modele_charge():` précharge (keep_alive « 30m »), garde le modèle
+    entre les appels, puis le DÉCHARGE explicitement (keep_alive 0) à la sortie, même en
+    cas d'erreur. Ordre du pipeline : OCR, puis tous les appels LLM, puis déchargement.
+  - `verifier()` (serveur + modèle présent), `modeles_charges()` (= ollama ps, pour
+    vérifier qu'Ollama est vide avant l'OCR).
+  - Troncature : texte compacté (espaces, lignes vides), puis on garde le DÉBUT (zone titre
+    comprise), coupé en fin de ligne, avec « [... texte tronque ...] ». Budget = (2048 -
+    consigne - 400 tokens réservés à la réponse) x 2,5 caractères/token (prudent ; mesuré :
+    3,3 caractères/token sur un texte propre). Alerte si Ollama a lu plus que prévu.
+  - Robustesse : délai 300 s par appel ; JSON invalide ou non conforme (clés obligatoires,
+    enum) -> UN nouvel essai puis échec propre ; panne réseau/délai/HTTP -> échec propre
+    sans nouvel essai. Aucune exception ne remonte. `ReponseLLM(ok, donnees, erreur,
+    essais, duree_s, chargement_s, tokens_lus, tokens_generes, texte_tronque, alertes)`,
+    `donnees` masqué dans repr().
+  - Prompts : fichiers `prompts/<nom>.txt`, emplacement `$texte` (string.Template : pas de
+    conflit avec les accolades JSON). Pour l'instant : `prompts/essai_llm.txt` (test réel).
+  - `tests/test_llm.py` : 27 tests avec Ollama SIMULÉ (343 au total) + 1 test réel marqué
+    `ollama_reel`, exclu par défaut (pytest.ini) ; à lancer à part, OCR arrêté :
+    `python -m pytest -m ollama_reel -s`.
+  - Test réel (texte INVENTÉ, Ollama vide, aucun OCR) : chargement 9,8 s, réponse 10,5 s,
+    total 20,4 s ; 145 tokens lus, 31 générés ; modèle bien déchargé ensuite.
+    fournisseur correct, MAIS montant_ttc = null alors que « Total TTC : 1 200,00 DH »
+    est dans le texte : à surveiller pour extractor.py (prompt, schéma, ou extraction
+    des montants par regex).
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -391,5 +422,6 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b6b) FAIT : src/ocr_worker.py.
    b7) FAIT : src/rules.py.
    b7-bis) FAIT : zone titre + corrections du registre.
-   Suite : src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
+   b8) FAIT : src/llm.py.
+   Suite : src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).

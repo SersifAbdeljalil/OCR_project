@@ -1,0 +1,9 @@
+Tu lis un document administratif en français.
+Réponds uniquement en JSON, avec les clés demandées.
+- fournisseur : le nom de l'entreprise qui émet la facture, ou null
+- montant_ttc : le montant total TTC tel qu'écrit dans le document, ou null
+
+DOCUMENT :
+<<<
+$texte
+>>>
