@@ -32,8 +32,12 @@ def main():
     if not taches:
         sys.exit("Aucune page a OCR dans tests/docs_test/.")
 
+    # Option --seuil-ram N (Mo) : pour comparer, ex. --seuil-ram 99999 = sans relance
+    options = {}
+    if "--seuil-ram" in sys.argv:
+        options["seuil_ram_mo"] = float(sys.argv[sys.argv.index("--seuil-ram") + 1])
     debut = time.perf_counter()
-    lot = lancer_ocr(taches)                     # UN lot : modele charge une fois
+    lot = lancer_ocr(taches, **options)          # UN lot (le worker peut etre relance)
     total = time.perf_counter() - debut
 
     print(f"{'Fichier':<45} {'Pages':>5} {'Image max (px)':>15} {'s/page':>7} {'Lignes':>7} "
@@ -70,6 +74,7 @@ def main():
     print(f"Lignes sous {SEUIL_LIGNE:.2f}             : "
           f"{sum(1 for l in toutes_lignes if l.confiance < SEUIL_LIGNE)}")
     print(f"Pic de RAM du worker        : {lot.pic_ram_mo:.0f} Mo")
+    print(f"Relances pour RAM (> seuil) : {lot.recyclages}")
     print(f"Alertes                     : {' ; '.join(lot.alertes) or '-'}")
 
 

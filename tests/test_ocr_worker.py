@@ -184,6 +184,17 @@ def test_delai_depasse_page_suivante_quand_meme(tmp_path):
     assert r.alertes == ["page 1 abandonnee : delai depasse (0.01 s)"] * 2
 
 
+def test_worker_relance_si_ram_trop_haute(tmp_path):
+    """Seuil de RAM tres bas : le worker s'arrete apres chaque page et le parent le
+    relance. Aucune page perdue, aucune erreur."""
+    fichiers = [image_png(tmp_path / f"p{i}.png") for i in range(3)]
+    taches = [{"fichier": str(f), "page": 1} for f in fichiers]
+    r = lancer_ocr(taches, dossier_travail=tmp_path / "t", seuil_ram_mo=100)
+    assert len(r.pages) == 3
+    assert all(p.statut == STATUT_OK and p.lignes for p in r.pages.values())
+    assert r.recyclages == 2 and len(r.chargement_s) == 3 and r.alertes == []
+
+
 def test_chargement_trop_long(tmp_path):
     a = image_png(tmp_path / "a.png")
     r = lancer_ocr([{"fichier": str(a), "page": 1}], dossier_travail=tmp_path / "t",

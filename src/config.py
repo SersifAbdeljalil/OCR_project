@@ -30,6 +30,7 @@ DOSSIER_DATA = RACINE / "data"              # resultats intermediaires (interdit
 SEUIL_CONFIANCE = 0.90          # >= 0.90 -> rangement automatique (regle A)
 SEUIL_CONFIANCE_OCR_DOCUMENT = 0.80   # confiance OCR moyenne en dessous -> validation humaine
 SEUIL_PART_ARABE = 0.30         # plus de 30 % de lettres arabes (texte natif) -> validation humaine
+SEUIL_RAM_WORKER_OCR_MO = 1536  # worker OCR relance des que sa RAM depasse 1,5 Go (apres une page)
 # Moteur de classification (voir src/classifier.py, dictionnaire MOTEURS).
 # Changer de moteur = changer ce nom (ex. un futur "jev"), sans toucher a classifier.py.
 MOTEUR_CLASSIFICATION = "phi4-mini"

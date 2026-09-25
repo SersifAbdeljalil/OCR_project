@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from src.config import DOSSIER_DATA, RACINE
+from src.config import DOSSIER_DATA, RACINE, SEUIL_RAM_WORKER_OCR_MO
 
 # --- Reglages --------------------------------------------------------------
 DPI = 200                    # rendu des pages PDF
@@ -87,6 +87,7 @@ class ResultatLot:
     pages: dict = field(default_factory=dict)      # (fichier, page) -> PageOCR
     chargement_s: list = field(default_factory=list)   # un temps par lancement du worker
     pic_ram_mo: float = 0.0
+    recyclages: int = 0                             # relances pour RAM trop haute
     dossier: Path = None                            # data/ocr/<lot>/
     alertes: list = field(default_factory=list)
 
@@ -120,7 +121,8 @@ def _lire_nouvelles_lignes(chemin: Path, deja_lues: int) -> list:
     return [json.loads(l) for l in completes[deja_lues:] if l.strip()]
 
 
-def _lancer_worker(taches: list, dossier: Path, numero: int, threads: int):
+def _lancer_worker(taches: list, dossier: Path, numero: int, threads: int,
+                   seuil_ram_mo: float):
     """Ecrit les taches et lance le sous-process. Renvoie (process, fichier resultats)."""
     fichier_taches = dossier / f"taches_{numero}.json"
     fichier_resultats = dossier / f"resultats_{numero}.jsonl"
@@ -130,7 +132,7 @@ def _lancer_worker(taches: list, dossier: Path, numero: int, threads: int):
     journal = open(dossier / f"worker_{numero}.log", "w", encoding="utf-8")
     process = subprocess.Popen(
         [sys.executable, "-m", "src.ocr_worker", str(fichier_taches),
-         str(fichier_resultats), str(threads)],
+         str(fichier_resultats), str(threads), str(seuil_ram_mo)],
         cwd=RACINE, env=env, stdout=journal, stderr=subprocess.STDOUT)
     process.journal = journal                      # ferme a la fin
     return process, fichier_resultats
@@ -139,9 +141,11 @@ def _lancer_worker(taches: list, dossier: Path, numero: int, threads: int):
 def lancer_ocr(taches: list, dossier_travail: Path = None,
                delai_page_s: float = DELAI_PAGE_S,
                delai_chargement_s: float = DELAI_CHARGEMENT_S,
-               threads: int = THREADS) -> ResultatLot:
+               threads: int = THREADS,
+               seuil_ram_mo: float = SEUIL_RAM_WORKER_OCR_MO) -> ResultatLot:
     """OCR d'un lot de pages [{"fichier", "page"}] dans un sous-process.
-    Ne leve pas d'exception pour une page : elle est notee en erreur."""
+    Ne leve pas d'exception pour une page : elle est notee en erreur.
+    Le worker est relance des que sa RAM depasse seuil_ram_mo (apres une page)."""
     lot = ResultatLot()
     if not taches:
         return lot
@@ -153,30 +157,38 @@ def lancer_ocr(taches: list, dossier_travail: Path = None,
     restantes, numero = list(taches), 0
     while restantes:
         numero += 1
-        process, fichier_resultats = _lancer_worker(restantes, dossier, numero, threads)
-        lues, pret, cause = 0, False, None
+        process, fichier_resultats = _lancer_worker(restantes, dossier, numero, threads,
+                                                    seuil_ram_mo)
+        lues, pret, recycle, cause = 0, False, False, None
+        lignes_lues = 0                              # toutes les lignes JSON deja traitees
         dernier_signe = time.monotonic()
+
+        def traiter(nouvelles):
+            """Met a jour le lot avec les nouvelles lignes du worker."""
+            nonlocal lues, pret, recycle, lignes_lues
+            for d in nouvelles:
+                lignes_lues += 1
+                if d.get("pret"):
+                    pret = True
+                    lot.chargement_s.append(d["chargement_s"])
+                elif d.get("recycler"):
+                    recycle = True                   # RAM trop haute : arret volontaire
+                    lot.recyclages += 1
+                else:
+                    page = _page_depuis_json(d)
+                    lot.pages[(page.fichier, page.page)] = page
+                    lot.pic_ram_mo = max(lot.pic_ram_mo, page.pic_ram_mo)
+                    lues += 1
+            return bool(nouvelles)
+
         try:
             while True:
-                for d in _lire_nouvelles_lignes(fichier_resultats, lues + pret):
-                    if d.get("pret"):
-                        pret = True
-                        lot.chargement_s.append(d["chargement_s"])
-                    else:
-                        page = _page_depuis_json(d)
-                        lot.pages[(page.fichier, page.page)] = page
-                        lot.pic_ram_mo = max(lot.pic_ram_mo, page.pic_ram_mo)
-                        lues += 1
+                if traiter(_lire_nouvelles_lignes(fichier_resultats, lignes_lues)):
                     dernier_signe = time.monotonic()
                 if process.poll() is not None:
                     # Derniere lecture : le worker a pu ecrire juste avant de finir
-                    for d in _lire_nouvelles_lignes(fichier_resultats, lues + pret):
-                        if not d.get("pret"):
-                            page = _page_depuis_json(d)
-                            lot.pages[(page.fichier, page.page)] = page
-                            lot.pic_ram_mo = max(lot.pic_ram_mo, page.pic_ram_mo)
-                            lues += 1
-                    if lues < len(restantes):
+                    traiter(_lire_nouvelles_lignes(fichier_resultats, lignes_lues))
+                    if lues < len(restantes) and not recycle:
                         cause = f"worker arrete (code {process.returncode})"
                     break
                 delai = delai_page_s if pret else delai_chargement_s
@@ -195,6 +207,10 @@ def lancer_ocr(taches: list, dossier_travail: Path = None,
 
         if lues >= len(restantes):
             break
+        if recycle and cause is None:
+            # Arret volontaire pour liberer la RAM : aucune page perdue, on relance
+            restantes = restantes[lues:]
+            continue
         if not pret:
             # Le modele n'a meme pas pu se charger : inutile d'insister
             for t in restantes[lues:]:
@@ -238,6 +254,16 @@ def fusionner_texte(extraction, pages_ocr: dict):
 # ===========================================================================
 def pic_ram_mo() -> float:
     """Pic de RAM (working set) du process courant, en Mo (API Windows)."""
+    return _memoire_mo()[1]
+
+
+def ram_actuelle_mo() -> float:
+    """RAM (working set) utilisee MAINTENANT par le process courant, en Mo."""
+    return _memoire_mo()[0]
+
+
+def _memoire_mo():
+    """(RAM actuelle, pic de RAM) du process courant, en Mo (API Windows)."""
     import ctypes
     import ctypes.wintypes as wt
 
@@ -257,7 +283,7 @@ def pic_ram_mo() -> float:
     c = Compteurs()
     c.cb = ctypes.sizeof(c)
     psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb)
-    return round(c.PeakWorkingSetSize / 2**20, 1)
+    return round(c.WorkingSetSize / 2**20, 1), round(c.PeakWorkingSetSize / 2**20, 1)
 
 
 def charger_page(fichier: str, page: int, max_cote: int = MAX_COTE_PX):
@@ -313,9 +339,13 @@ class _EspionAngles:
         return images_lignes, angles, duree
 
 
-def main_worker(fichier_taches: str, fichier_resultats: str, threads: int) -> None:
+def main_worker(fichier_taches: str, fichier_resultats: str, threads: int,
+                seuil_ram_mo: float = SEUIL_RAM_WORKER_OCR_MO) -> None:
     """Charge PaddleOCR une fois, puis traite les pages une par une. Chaque page
-    produit une ligne JSON dans fichier_resultats (ecrite des qu'elle est finie)."""
+    produit une ligne JSON dans fichier_resultats (ecrite des qu'elle est finie).
+    Apres chaque page, si la RAM du process depasse seuil_ram_mo et qu'il reste des
+    pages, le worker ecrit {"recycler": true} et s'arrete : le parent le relance
+    (PaddleOCR accumule de la memoire au fil des pages)."""
     taches = json.loads(Path(fichier_taches).read_text(encoding="utf-8"))["pages"]
     with open(fichier_resultats, "a", encoding="utf-8") as sortie:
         def ecrire(objet):
@@ -331,7 +361,10 @@ def main_worker(fichier_taches: str, fichier_resultats: str, threads: int) -> No
             espion = ocr.text_classifier = _EspionAngles(ocr.text_classifier)
         ecrire({"pret": True, "chargement_s": round(time.perf_counter() - t0, 2)})
 
-        for t in taches:
+        for i, t in enumerate(taches):
+            if i > 0 and ram_actuelle_mo() > seuil_ram_mo:
+                ecrire({"recycler": True, "ram_mo": ram_actuelle_mo()})
+                return                              # le parent relance pour la suite
             debut = time.perf_counter()
             base = {"fichier": t["fichier"], "page": t["page"]}
             try:
@@ -364,4 +397,4 @@ def main_worker(fichier_taches: str, fichier_resultats: str, threads: int) -> No
 
 
 if __name__ == "__main__":
-    main_worker(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+    main_worker(sys.argv[1], sys.argv[2], int(sys.argv[3]), float(sys.argv[4]))
