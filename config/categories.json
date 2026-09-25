@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "champs_generiques": ["titre", "personne", "organisme", "date"],
+  "champs_sensibles": ["cin", "rib", "iban", "date_naissance", "adresse"],
+  "categories": [
+    {
+      "nom": "factures",
+      "dossier": "Factures",
+      "sous_dossiers": [],
+      "mots_cles": [
+        "\\bfacture\\b",
+        "\\bnote d.honoraires\\b",
+        "\\btva\\b",
+        "\\bttc\\b",
+        "\\b(montant|total) ht\\b"
+      ],
+      "champs": ["fournisseur", "date_facture", "numero", "montant_ht", "tva", "montant_ttc"]
+    },
+    {
+      "nom": "diplomes",
+      "dossier": "Diplomes",
+      "sous_dossiers": ["DEUG", "Licence", "Master", "Doctorat", "Autres"],
+      "mots_cles": [
+        "\\bdiplome\\b",
+        "\\b(deug|licence|master|doctorat|baccalaureat)\\b",
+        "\\bmention\\b",
+        "\\b(confere|decerne)\\b",
+        "\\bgrade\\b"
+      ],
+      "champs": ["titulaire", "intitule", "etablissement", "date_obtention", "mention"]
+    },
+    {
+      "nom": "attestations",
+      "dossier": "Attestations",
+      "sous_dossiers": ["Travail", "Scolarite", "Autres"],
+      "mots_cles": [
+        "\\battestation\\b",
+        "\\b(atteste|certifie)\\b",
+        "\\bpour servir et valoir\\b",
+        "\\bde (travail|scolarite|salaire)\\b"
+      ],
+      "champs": ["emetteur", "beneficiaire", "objet", "date"]
+    },
+    {
+      "nom": "contrats",
+      "dossier": "Contrats",
+      "sous_dossiers": [],
+      "mots_cles": [
+        "\\bcontrat\\b",
+        "\\bentre les soussignes\\b",
+        "\\barticle \\d+\\b",
+        "\\bles parties\\b"
+      ],
+      "champs": ["parties", "objet", "date_signature", "duree"]
+    },
+    {
+      "nom": "banque",
+      "dossier": "Banque",
+      "sous_dossiers": [],
+      "mots_cles": [
+        "\\breleve de compte\\b",
+        "\\bsolde\\b",
+        "\\biban\\b",
+        "\\brib\\b",
+        "\\bagence\\b"
+      ],
+      "champs": ["banque", "titulaire", "periode", "objet", "rib", "iban"]
+    }
+  ],
+  "regles_metier": [
+    {
+      "description": "Une attestation de reussite d'un diplome est un diplome",
+      "motifs": [
+        "\\battestation de reussite\\b",
+        "\\b(diplome|deug|licence|master|doctorat|baccalaureat)\\b"
+      ],
+      "categorie": "diplomes"
+    }
+  ]
+}

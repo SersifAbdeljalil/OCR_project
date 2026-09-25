@@ -127,6 +127,22 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   (seuil : 50 caractères visibles par page, jamais affichés). Résultat du jeu de test :
   17 fichiers (13 .pdf, 2 .xls, 1 .dotx, 1 .jpg) ; PDF : 4 natifs, 9 scans, 0 mixte,
   0 illisible ; 12 pages à passer en OCR. Aucun .docx ni .xlsx dans le jeu de test.
+- FAIT (étape b1) : pydantic 2.13.5 + pytest 9.1.1 installés. `pytest.ini` (seuls test_*.py,
+  docs_test/ jamais exploré). Lancer les tests : `python -m pytest -v` (38 tests OK).
+  - `config/categories.json` : registre initial (5 catégories, dossier, sous-dossiers,
+    mots-clés repris de test_classification.py + banque, champs, règle métier).
+    Clés globales : champs_generiques, champs_sensibles (cin, rib, iban, date_naissance,
+    adresse : ajoutés aux champs de TOUTES les catégories).
+  - `src/config.py` : charge et vérifie le registre (noms normalisés, pas de doublons,
+    dossiers comparés sans tenir compte de la casse, regex valides, pas de chiffre en clair
+    ni de nombre en lettres dans les mots-clés ; \d et {24} autorisés), liste toutes les
+    erreurs d'un coup. Constantes : SEUIL_CONFIANCE, A_Valider, Autres (noms réservés).
+  - `src/schemas.py` : modèle Pydantic `DocumentSortie` (schéma unique). Champs autorisés
+    selon la catégorie (génériques si type découvert), champs absents -> None,
+    confiance < 0.90 impose necessite_validation_humaine=true. Les erreurs ne recopient
+    jamais les valeurs, et repr() masque champs et texte_brut.
+  - Limite : le contrôle « pas de nom de personne » dans les mots-clés ne peut pas être
+    automatique ; il reste une vérification humaine.
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
   Limite : la règle « deny Read » vise l'outil Read, pas les commandes shell
   (Get-Content, cat...). Claude ne doit donc jamais utiliser le shell pour lire ces dossiers.
@@ -145,7 +161,9 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 0. FAIT : lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.
 a) FAIT : Inventaire du jeu de test : script tests/inventaire_docs_test.py (noms, formats, pages,
    natif ou scan), sans jamais afficher le contenu.
-b) Ensuite seulement : découpage en modules : src/config.py, src/schemas.py, src/masking.py,
+b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son test :
+   b1) FAIT : config/categories.json + src/config.py + src/schemas.py.
+   Suite : src/masking.py,
    src/normalize.py, src/filer.py, src/extract_text.py, src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).

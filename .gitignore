@@ -5,3 +5,4 @@ Folder_Entree/
 Folder_Sortie/
 data/
 tests/docs_test/
+.pytest_cache/
