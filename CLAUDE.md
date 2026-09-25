@@ -122,6 +122,11 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   `tests/docs_test/`, `Folder_Entree/`, `Folder_Sortie/` et `data/`.
 - FAIT : dossier `tests/docs_test/` créé (documents d'exemple, ignoré par git).
   Les dossiers de sortie ne sont PAS créés (voir architecture, point 8).
+- FAIT : PyMuPDF 1.28.2 installé dans le .venv (utiliser `import pymupdf`, `fitz` est obsolète).
+- FAIT : `tests/inventaire_docs_test.py` (étape a) : noms, formats, taille, pages, natif/scan
+  (seuil : 50 caractères visibles par page, jamais affichés). Résultat du jeu de test :
+  17 fichiers (13 .pdf, 2 .xls, 1 .dotx, 1 .jpg) ; PDF : 4 natifs, 9 scans, 0 mixte,
+  0 illisible ; 12 pages à passer en OCR. Aucun .docx ni .xlsx dans le jeu de test.
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
   Limite : la règle « deny Read » vise l'outil Read, pas les commandes shell
   (Get-Content, cat...). Claude ne doit donc jamais utiliser le shell pour lire ces dossiers.
@@ -138,7 +143,7 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 
 ## Prochaines étapes (une à la fois)
 0. FAIT : lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.
-a) Inventaire du jeu de test : script tests/inventaire_docs_test.py (noms, formats, pages,
+a) FAIT : Inventaire du jeu de test : script tests/inventaire_docs_test.py (noms, formats, pages,
    natif ou scan), sans jamais afficher le contenu.
 b) Ensuite seulement : découpage en modules : src/config.py, src/schemas.py, src/masking.py,
    src/normalize.py, src/filer.py, src/extract_text.py, src/ocr_worker.py,
