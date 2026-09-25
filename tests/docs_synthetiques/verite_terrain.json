@@ -1,0 +1,129 @@
+{
+  "f01_fr_standard_natif.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Atlas Fournitures Bureau SARL",
+    "date_facture": "2026-09-15",
+    "numero": "FA-2026-0142",
+    "montant_ht": "1988.00",
+    "tva": "397.60",
+    "montant_ttc": "2385.60",
+    "ice": "000999888000011",
+    "rib": "999780000012345678901234",
+    "attendu": "factures, rangé (0.95)",
+    "piege": "aucun : cas de référence"
+  },
+  "f02_fr_multi_tva_natif.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Menara Informatique SARL",
+    "date_facture": "2026-08-01",
+    "numero": "MI/2026/0387",
+    "montant_ht": "2900.00",
+    "tva": "499.00",
+    "tva_detail": {
+      "20": "400.00",
+      "14": "42.00",
+      "10": "50.00",
+      "7": "7.00"
+    },
+    "montant_ttc": "3399.00",
+    "ice": "000777666000022",
+    "attendu": "factures, rangé",
+    "piege": "4 taux de TVA (20/14/10/7) à additionner ; date « 1er août 2026 »"
+  },
+  "f03_fr_sans_tva_natif.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Oasis Services Nettoyage",
+    "date_facture": "2026-09-30",
+    "numero": "2026-017",
+    "montant_ht": "1500.00",
+    "tva": null,
+    "montant_ttc": "1500.00",
+    "ice": "000555444000033",
+    "attendu": "factures, rangé avec alerte « facture sans TVA »",
+    "piege": "pas de TVA (HT = TTC) ; libellé « Net à payer » ; date avec points"
+  },
+  "f04_fr_ecart_totaux_natif.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Riad Events SARL",
+    "date_facture": "2026-07-12",
+    "numero": "RE-2026-055",
+    "montant_ht": "2400.00",
+    "tva": "480.00",
+    "montant_ttc": "2980.00",
+    "ice": "000333222000044",
+    "attendu": "factures, mais A_Valider : HT + TVA ≠ TTC (écart de 100,00)",
+    "piege": "erreur volontaire dans le TTC"
+  },
+  "f05_bilingue_natif.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Régie Fictive de Distribution",
+    "date_facture": "2026-09-05",
+    "numero": "RFD-26-889201",
+    "montant_ht": "966.50",
+    "tva": "193.30",
+    "montant_ttc": "1159.80",
+    "ice": "000111222000055",
+    "attendu": "factures ; avec la règle actuelle (> 30 % d'arabe) : A_Valider",
+    "piege": "libellés bilingues : environ 44 % de lettres arabes, alors que tout le contenu utile est aussi en français"
+  },
+  "f06_arabe_natif.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "شركة الأطلس الوهمية للتوريدات",
+    "date_facture": "2026-09-20",
+    "numero": "AR-2026-031",
+    "montant_ht": "2000.00",
+    "tva": "400.00",
+    "montant_ttc": "2400.00",
+    "ice": "000222333000066",
+    "attendu": "A_Valider (texte arabe > 30 %)",
+    "piege": "document presque entièrement en arabe"
+  },
+  "f07_fr_scan_propre.jpg": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Sahara Telecom Fictif SA",
+    "date_facture": "2026-09-10",
+    "numero": "ST-0926-44871",
+    "montant_ht": "549.00",
+    "tva": "109.80",
+    "montant_ttc": "658.80",
+    "ice": "000444555000077",
+    "attendu": "factures, rangé si OCR ≥ 0,80",
+    "piege": "photo/scan propre, légèrement penché"
+  },
+  "f08_fr_scan_degrade.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Froid Express Fictif SARL",
+    "date_facture": "2026-09-18",
+    "numero": "FE-2026-0918",
+    "montant_ht": "3450.00",
+    "tva": "690.00",
+    "montant_ttc": "4140.00",
+    "ice": "000666777000088",
+    "attendu": "factures ; probablement A_Valider (OCR dégradé)",
+    "piege": "scan flou, bruité, penché, avec tampon ; année sur 2 chiffres"
+  },
+  "f09_bilingue_scan.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Régie Fictive de Distribution",
+    "date_facture": "2026-08-04",
+    "numero": "RFD-26-771430",
+    "montant_ht": "980.00",
+    "tva": "196.00",
+    "montant_ttc": "1176.00",
+    "ice": "000111222000055",
+    "attendu": "factures ; confiance OCR probablement basse (arabe illisible pour le modèle latin)",
+    "piege": "scan bilingue : l'arabe fait baisser la confiance OCR"
+  },
+  "f10_fr_montants_europeens_natif.pdf": {
+    "categorie_attendue": "factures",
+    "fournisseur": "Tensift Conseil SARL",
+    "date_facture": "2026-03-05",
+    "numero": "TC 2026 / 12",
+    "montant_ht": "5455.00",
+    "tva": "1091.00",
+    "montant_ttc": "6546.00",
+    "ice": "000888999000099",
+    "attendu": "factures, rangé",
+    "piege": "montants au format 5.455,00 ; date en toutes lettres ; libellé « Net à payer TTC »"
+  }
+}

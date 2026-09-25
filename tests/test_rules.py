@@ -7,6 +7,7 @@ Lancement (venv active, depuis OCR_PROJECT) :  python -m pytest -v
 """
 
 import copy
+from pathlib import Path
 
 import pytest
 
@@ -198,6 +199,25 @@ def test_part_arabe():
     assert part_arabe("شهادة") == 1.0
     assert part_arabe("abcd شهادة") == pytest.approx(5 / 9)
     assert part_arabe("123 !") == 0.0                      # aucune lettre
+
+
+def test_part_arabe_formes_de_presentation():
+    """Les PDF arabes sont souvent extraits en formes de presentation (FB50-FEFF)."""
+    assert part_arabe("ﺷﻮﺎﺩﺔ") == 1.0          # formes B
+    assert part_arabe("ﭐﭑﴽ") == 1.0                      # formes A
+    assert part_arabe("︐︱abc") == 0.0                         # pas des lettres arabes
+
+
+SYNTH = Path(__file__).parent / "docs_synthetiques"
+
+
+@pytest.mark.skipif(not SYNTH.is_dir(), reason="jeu synthetique absent")
+def test_part_arabe_sur_les_factures_fictives():
+    from src.extract_text import extraire
+    f05 = part_arabe(extraire(SYNTH / "f05_bilingue_natif.pdf").texte)
+    f06 = part_arabe(extraire(SYNTH / "f06_arabe_natif.pdf").texte)
+    assert 0.30 < f05 < 0.70            # bilingue : ne doit plus bloquer a lui seul
+    assert f06 > 0.95                   # presque tout en arabe
 
 
 def test_signaux_texte_natif_seul_pour_l_arabe():

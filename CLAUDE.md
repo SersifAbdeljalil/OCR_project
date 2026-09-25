@@ -102,7 +102,11 @@ Seuls « net » + accord et une règle métier rangent automatiquement.
 Un verdict « net » ne suffit PLUS seul : le LLM confirme toujours.
 (« net » = >= 2 indices, un seul type, et au moins un mot-clé du type dans la zone titre.)
 Signaux qualité : confiance OCR moyenne du document < 0.80 -> validation humaine ;
-texte natif avec plus de 30 % de lettres arabes -> validation humaine.
+texte natif avec plus de 70 % de lettres arabes -> validation humaine (décision du
+2026-09-25, seuil passé de 30 % à 70 % : une facture bilingue marocaine, ~41-44 %
+d'arabe, ne part plus en validation pour cette seule raison ; une facture
+majoritairement arabe, oui). Les lettres arabes comptées incluent les FORMES DE
+PRÉSENTATION (U+FB50-FDFF et U+FE70-FEFF), forme habituelle du texte des PDF arabes.
 Confiance >= 0.90 -> rangement automatique, sinon -> A_Valider/.
 On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 
@@ -447,6 +451,17 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     accumulation de mémoire dans le worker PaddleOCR. Piste non appliquée : relancer le
     worker toutes les N pages.
   - Texte natif > 30 % de lettres arabes (SEUIL_PART_ARABE) -> validation obligatoire.
+    (Remplacé ensuite par 70 %, voir la règle de confiance.)
+- FAIT : jeu SYNTHÉTIQUE `tests/docs_synthetiques/` (10 factures FICTIVES f01 à f10,
+  LISEZMOI.md, verite_terrain.json) : lisible par Claude, versionné dans git ; valeurs
+  affichables. Sert à mesurer l'extraction champ par champ.
+- FAIT : relance du worker OCR si sa RAM dépasse SEUIL_RAM_WORKER_OCR_MO = 1536 Mo
+  (contrôle après chaque page ; ligne {"recycler": true} ; le parent relance pour les
+  pages restantes, sans erreur ; `lot.recyclages`). Mesure sur le jeu de test du jour
+  (7 pages OCR) : pic 1827 Mo sans relance -> 1684 Mo avec 1 relance (+5 s de chargement).
+  Le pic dépasse encore 1,5 Go : le contrôle a lieu APRÈS une page (+150 à 300 Mo par page).
+- FAIT : détection de l'arabe vérifiée : f06 = 99,3 %, f05 = 40,9 %, f01 = 0 % (les formes
+  de présentation étaient déjà comptées depuis b7). Seuil passé à 70 %.
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur

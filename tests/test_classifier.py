@@ -117,18 +117,21 @@ def test_ocr_a_080_pile_ne_bloque_pas():
     assert not r.necessite_validation_humaine
 
 
-def test_texte_arabe_au_dela_de_30_pourcent():
-    natif = "شهادة الإجازة في الاقتصاد Licence"          # surtout des lettres arabes
+def test_texte_arabe_au_dela_de_70_pourcent():
+    natif = "شهادة الإجازة في الاقتصاد Licence"          # 20 lettres arabes sur 27
     r = classer_avec(FACTURE_NETTE, MoteurSimule("factures"), texte_natif=natif)
-    assert r.signaux.part_arabe > 0.30
+    assert r.signaux.part_arabe > 0.70
     assert r.confiance == 0.95 and r.necessite_validation_humaine
     assert any(x.startswith("lettres arabes") for x in r.raisons)
 
 
-def test_texte_arabe_sous_30_pourcent():
-    natif = "Facture " * 20 + "شهادة"                     # 5 lettres arabes sur 145
+def test_facture_bilingue_sous_70_pourcent_ne_bloque_pas():
+    """Decision 2026-09-25 : une facture bilingue (~44 % d'arabe) n'est plus envoyee
+    en validation pour cette seule raison."""
+    natif = "Facture Fournisseur Montant " * 4 + "فاتورة المورد المبلغ الإجمالي " * 3
     r = classer_avec(FACTURE_NETTE, MoteurSimule("factures"), texte_natif=natif)
-    assert r.signaux.part_arabe < 0.30 and not r.necessite_validation_humaine
+    assert 0.30 < r.signaux.part_arabe < 0.70
+    assert not r.necessite_validation_humaine
 
 
 def test_seuls_net_accord_et_regle_metier_rangent():

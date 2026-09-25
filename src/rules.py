@@ -33,7 +33,10 @@ EGALITE = "egalite"
 AUCUN_INDICE = "aucun indice"
 VERDICTS_SURS = (NET, REGLE_METIER)       # ceux qui valent 0.95 dans la regle A
 
-# Lettres arabes (blocs Unicode de base, supplement, etendu, formes de presentation)
+# Lettres arabes : blocs de base (0600-06FF), supplement (0750-077F), etendu-A
+# (08A0-08FF) et FORMES DE PRESENTATION A (FB50-FDFF) et B (FE70-FEFF). Les PDF arabes
+# sont souvent extraits en formes de presentation. Le bloc FE00-FE6F, entre les deux,
+# ne contient aucune lettre arabe (selecteurs de variantes, formes verticales...).
 LETTRE_ARABE = re.compile(r"[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]")
 
 
