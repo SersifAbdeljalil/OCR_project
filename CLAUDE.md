@@ -239,6 +239,29 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   - `tests/verifier_extraction.py` sur le jeu de test : 17 fichiers, 0 illisible,
     7125 caractères extraits, 12 pages à OCR (cohérent avec l'inventaire), 0,4 s.
     .xls lus par xlrd, .dotx par « python-docx (modele) ».
+- FAIT (étape b6a) : faisabilité PaddleOCR (pas encore de module).
+  - Installé : paddlepaddle 2.6.2 (CPU, DERNIÈRE 2.x disponible pour Python 3.11 Windows)
+    + paddleocr 2.10.0 (DERNIÈRE 2.x ; branche plus maintenue, le projet est en 3.x).
+    Épinglages OBLIGATOIRES : numpy<2 (paddle 2.6.2 compilé pour numpy 1.x ; sinon pip
+    prend numpy 2.4) et opencv-python / opencv-contrib-python / opencv-python-headless
+    <4.11 (les 3 alignés en 4.10.0.84 : ils partagent le module cv2). PyMuPDF 1.28.2
+    conservé. `pip check` OK, 245 tests toujours OK.
+  - `requirements.txt` (pip freeze, 60 paquets) : réinstallation à l'identique avec
+    `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
+  - `tests/essai_ocr.py` (facture INVENTÉE rendue à 200 dpi, 1653x2339 px, lang="fr",
+    CPU, OMP_NUM_THREADS=2, cpu_threads=2), Ollama sans modèle chargé :
+    chargement 3,8 s (modèles déjà téléchargés), OCR 1,9 s/page, pic RAM 641 Mo,
+    9/9 lignes, confiance moyenne 0,982, ressemblance 98,7 %.
+    Erreurs : « FACTURE N° FA- » lu « EACTURE N° EA- » (F -> E sur le titre en gros
+    caractères), « Arrêtée » -> « Arrétée », « à » -> « ä ».
+    => Attention : la regex \bfacture\b ne reconnaîtrait pas « EACTURE », et le numéro
+    de facture est faux : l'OCR impose la prudence (validation humaine).
+  - Modèles (téléchargés au 1er lancement, ~1 min) : C:\Users\<utilisateur>\.paddleocr\whl\,
+    15,6 Mo au total : det en_PP-OCRv3 (3,8 Mo), rec latin_PP-OCRv3 (9,7 Mo),
+    cls ch_ppocr_mobile_v2.0 (2,1 Mo).
+  - Avertissement paddle « OMP_NUM_THREADS set to 2, not 1 » sans conséquence (build MKL,
+    pas OpenBlas) : l'OCR fonctionne.
+  - Plan B si problème plus tard : RapidOCR (mêmes modèles, onnxruntime). PAS PaddleOCR 3.x.
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -265,6 +288,7 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b3) FAIT : src/normalize.py.
    b4) FAIT : src/filer.py.
    b5) FAIT : src/extract_text.py (sans OCR).
+   b6a) FAIT : faisabilité PaddleOCR (tests/essai_ocr.py) + requirements.txt.
    Suite : src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).
