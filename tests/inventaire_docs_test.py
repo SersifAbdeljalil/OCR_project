@@ -19,9 +19,13 @@ from pathlib import Path          # manipuler les chemins proprement
 
 import pymupdf                    # lecture des PDF (nom moderne de "fitz")
 
+# Le seuil vient de src/config.py (le meme que pour l'extraction) : on ajoute
+# la racine du projet au chemin de recherche pour pouvoir importer "src".
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.config import SEUIL_CARACTERES_PAGE   # noqa: E402
+
 # --- Reglages --------------------------------------------------------------
 DOSSIER = Path(__file__).parent / "docs_test"   # tests/docs_test/, ou que l'on lance
-SEUIL_CARACTERES_PAGE = 50   # en dessous, la page est consideree sans couche texte
 
 # Categorie de lecture prevue pour chaque extension (hors PDF, traite a part)
 LECTURE_PAR_EXTENSION = {

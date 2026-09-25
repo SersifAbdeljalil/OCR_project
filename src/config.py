@@ -27,6 +27,7 @@ DOSSIER_SORTIE = RACINE / "Folder_Sortie"   # documents ranges
 DOSSIER_TRAITES = "Traites"                 # sous-dossier de Folder_Entree
 
 SEUIL_CONFIANCE = 0.90          # >= 0.90 -> rangement automatique (regle A)
+SEUIL_CARACTERES_PAGE = 50      # page PDF avec moins de caracteres visibles -> OCR requis
 DOSSIER_A_VALIDER = "A_Valider"  # dossiers speciaux, hors registre
 DOSSIER_AUTRES = "Autres"
 NOMS_RESERVES = {"a_valider", "autres"}   # interdits comme nom de categorie

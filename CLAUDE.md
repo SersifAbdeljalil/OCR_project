@@ -217,6 +217,28 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     gardés, original laissé dans Folder_Entree, alerte. Les alertes ne contiennent que le
     type d'erreur (jamais le message système, qui contient des chemins).
   - `tests/test_filer.py` : 38 tests dans tmp_path (221 au total).
+- FAIT (étape b5) : `src/extract_text.py` (sans OCR). python-docx 1.2.0, xlrd 2.0.2,
+  openpyxl 3.1.5 installés. SEUIL_CARACTERES_PAGE (50) est dans config.py, partagé
+  avec l'inventaire.
+  - `extraire(chemin)` -> ResultatExtraction(texte, nb_pages, pages_ocr, statut_pages,
+    methode, illisible, alertes). Ne lève JAMAIS d'exception ; illisible -> alerte
+    « illisible : <raison> » (type d'erreur seulement, jamais de chemin ni de texte).
+  - PDF : page par page, « texte » ou « OCR requis » ; PDF mixte -> texte des pages
+    natives + liste des pages à OCR. Protégé / corrompu / 0 page -> illisible.
+  - Images : aucune extraction, toutes les pages « OCR requis » ; chaque page est rendue
+    à 10 % pour détecter une image corrompue (PyMuPDF ouvre un faux .jpg sans erreur).
+  - DOCX/DOTX : en-têtes, corps (paragraphes + tableaux dans l'ordre, cellules
+    « | »), zones de texte, pieds de page. DOTX : copie EN MÉMOIRE avec le type
+    « document » (méthode « python-docx (modele) ») ; dernier recours : XML brut.
+  - XLS/XLSX : toutes les feuilles (« [Feuille : nom] »), cellules non vides ligne par
+    ligne, dates -> AAAA-MM-JJ, 1200.0 -> 1200. nb_pages = nombre de feuilles.
+  - Document lisible mais vide -> alerte « aucun texte extrait ».
+  - `tests/test_extract_text.py` : 23 tests sur fichiers générés dans tmp_path (245 au
+    total). Pas de test unitaire .xls (impossible d'en générer sans bibliothèque de plus) :
+    couvert par le jeu de test réel.
+  - `tests/verifier_extraction.py` sur le jeu de test : 17 fichiers, 0 illisible,
+    7125 caractères extraits, 12 pages à OCR (cohérent avec l'inventaire), 0,4 s.
+    .xls lus par xlrd, .dotx par « python-docx (modele) ».
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -242,6 +264,7 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b2) FAIT : src/masking.py.
    b3) FAIT : src/normalize.py.
    b4) FAIT : src/filer.py.
-   Suite : src/extract_text.py, src/ocr_worker.py,
+   b5) FAIT : src/extract_text.py (sans OCR).
+   Suite : src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).
