@@ -89,6 +89,9 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   `tests/docs_test/`, `Folder_Entree/`, `Folder_Sortie/` et `data/`.
 - FAIT : dossier `tests/docs_test/` créé (documents d'exemple, ignoré par git).
   Les dossiers de sortie ne sont PAS créés (voir architecture, point 8).
+- FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
+  Limite : la règle « deny Read » vise l'outil Read, pas les commandes shell
+  (Get-Content, cat...). Claude ne doit donc jamais utiliser le shell pour lire ces dossiers.
 
 ## Questions encore ouvertes (à poser avant l'étape concernée)
 - B : diplômes hors DEUG/Licence/Master/Doctorat (Bac, BTS, DUT...) -> Diplomes/Autres/ ?
@@ -96,8 +99,14 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   (seuls .txt/.json sont masqués). Acceptable pour le MVP ?
 
 ## Prochaines étapes (une à la fois)
-1. FAIT : lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.
-2. Transformer le test en modules : src/config.py, src/schemas.py, src/masking.py,
+0. FAIT : lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.
+a) Jeu de test : l'utilisateur dépose des documents d'exemple dans tests/docs_test/
+   (pas forcément tous les types).
+b) Claude crée tests/docs_test/attendus.csv : liste des noms de fichiers + colonne
+   type_attendu VIDE, que l'utilisateur remplit lui-même.
+c) Script d'inventaire tests/inventaire_docs_test.py : noms, formats, pages, natif ou scan,
+   sans jamais afficher le contenu.
+d) Ensuite seulement : découpage en modules : src/config.py, src/schemas.py, src/masking.py,
    src/normalize.py, src/filer.py, src/extract_text.py, src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).
