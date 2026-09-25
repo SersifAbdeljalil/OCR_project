@@ -30,6 +30,15 @@ DOSSIER_DATA = RACINE / "data"              # resultats intermediaires (interdit
 SEUIL_CONFIANCE = 0.90          # >= 0.90 -> rangement automatique (regle A)
 SEUIL_CARACTERES_PAGE = 50      # page PDF avec moins de caracteres visibles -> OCR requis
 SEUIL_CONFIANCE_LIGNE_OCR = 0.90   # ligne OCR "douteuse" en dessous (signal de qualite)
+
+# Zone titre = debut du document, la ou se trouve le type ("FACTURE", "ATTESTATION...").
+# 15 lignes non vides : un en-tete (societe, adresse, telephone, ICE) prend 4 a 8 lignes
+# avant le titre, et l'OCR decoupe plus finement (un bloc = une ligne, en-tete sur deux
+# colonnes). Au-dela, c'est le corps du texte, ou une simple mention ("le contrat",
+# "la facture n°") ne dit rien du type. Plafond de 1000 caracteres : un PDF natif peut
+# avoir de tres longues lignes.
+ZONE_TITRE_LIGNES = 15
+ZONE_TITRE_CARACTERES = 1000
 DOSSIER_A_VALIDER = "A_Valider"  # dossiers speciaux, hors registre
 DOSSIER_AUTRES = "Autres"
 NOMS_RESERVES = {"a_valider", "autres"}   # interdits comme nom de categorie
@@ -273,17 +282,31 @@ def modele_nom_fichier(registre: dict, nom_type: str) -> dict:
     return {"prefixe": nom_type, "parties": ["titre", "personne"]}
 
 
+def zone_titre(texte: str) -> str:
+    """Les premieres lignes non vides du document (voir ZONE_TITRE_LIGNES)."""
+    lignes = [l.strip() for l in (texte or "").splitlines() if l.strip()]
+    return "\n".join(lignes[:ZONE_TITRE_LIGNES])[:ZONE_TITRE_CARACTERES]
+
+
+def _sous_dossiers_reconnus(sous_dossiers: list, texte: str) -> list:
+    t = normaliser(texte)
+    return [sd["nom"] for sd in sous_dossiers
+            if sd["nom"] != DOSSIER_AUTRES
+            and any(re.search(motif, t) for motif in sd["mots_cles"])]
+
+
 def choisir_sous_dossier(categorie: dict, texte: str):
-    """Choisit le sous-dossier d'un document, SANS LLM :
+    """Choisit le sous-dossier d'un document, SANS LLM, en regardant d'abord la
+    ZONE TITRE, puis tout le texte si le titre ne dit rien :
         - exactement un sous-dossier reconnu -> ce sous-dossier ;
         - aucun ou plusieurs                 -> "Autres" ;
         - categorie sans sous-dossiers       -> None (rangement a la racine).
+    Ex. : titre "Diplome de Licence" + "acces au Master" dans le corps -> Licence.
     Renvoie seulement un NOM de dossier, jamais d'extrait du texte."""
     sous_dossiers = categorie.get("sous_dossiers", [])
     if not sous_dossiers:
         return None
-    t = normaliser(texte)
-    reconnus = [sd["nom"] for sd in sous_dossiers
-                if sd["nom"] != DOSSIER_AUTRES
-                and any(re.search(motif, t) for motif in sd["mots_cles"])]
+    reconnus = _sous_dossiers_reconnus(sous_dossiers, zone_titre(texte))
+    if not reconnus:                                  # le titre ne dit rien
+        reconnus = _sous_dossiers_reconnus(sous_dossiers, texte)
     return reconnus[0] if len(reconnus) == 1 else DOSSIER_AUTRES

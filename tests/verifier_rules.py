@@ -38,8 +38,8 @@ def main():
     lot = lancer_ocr(taches)                        # un seul lot pour tout le jeu de test
 
     print(f"{'Fichier':<40} {'Categorie':<13} {'Verdict':<13} {'Sous-dossier':<12} "
-          f"{'Scores':<34} {'Arabe':>6} {'Conf.OCR':>8} {'<0,90':>7}")
-    print("-" * 140)
+          f"{'Scores':<34} {'Titre':<24} {'Arabe':>6} {'Conf.OCR':>8} {'<0,90':>7}")
+    print("-" * 165)
     bilan = Counter()
     for chemin in fichiers:
         e = extractions[chemin]
@@ -57,7 +57,8 @@ def main():
         conf = f"{s.confiance_ocr_moyenne:.3f}" if s.confiance_ocr_moyenne is not None else "-"
         sous_seuil = f"{s.lignes_ocr_sous_seuil}/{s.lignes_ocr}" if s.lignes_ocr else "-"
         print(f"{nom:<40} {r.categorie or '-':<13} {r.verdict:<13} {r.sous_dossier or '-':<12} "
-              f"{scores_courts(r.scores):<34} {s.part_arabe:>6.1%} {conf:>8} {sous_seuil:>7}")
+              f"{scores_courts(r.scores):<34} {scores_courts(r.scores_titre):<24} "
+              f"{s.part_arabe:>6.1%} {conf:>8} {sous_seuil:>7}")
         bilan[r.verdict] += 1
 
     print("=" * 60)

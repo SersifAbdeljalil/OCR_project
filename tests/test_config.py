@@ -13,7 +13,7 @@ import pytest
 
 from src.config import (ErreurRegistre, champs_attendus, charger_registre,
                         choisir_sous_dossier, modele_nom_fichier, normaliser,
-                        trouver_categorie, verifier_registre)
+                        trouver_categorie, verifier_registre, zone_titre)
 
 
 # --- Outils ----------------------------------------------------------------
@@ -62,7 +62,43 @@ def test_mots_cles_banque(registre):
     banque = trouver_categorie(registre, "banque")
     texte = normaliser("Relevé de compte - Agence Centre - Solde créditeur")
     indices = sum(1 for m in banque["mots_cles"] if re.search(m, texte))
-    assert indices == 3        # releve de compte, agence, solde
+    assert indices == 2        # releve de compte, solde ("agence" seul ne compte plus)
+
+
+def test_rib_iban_agence_seuls_ne_comptent_plus(registre):
+    """Une facture porte souvent RIB / IBAN / agence : ce n'est pas un document bancaire."""
+    banque = trouver_categorie(registre, "banque")
+    texte = normaliser("Règlement par virement : RIB, IBAN, agence Exemple")
+    assert not any(re.search(m, texte) for m in banque["mots_cles"])
+
+
+# --- Zone titre et sous-dossier (titre d'abord) ------------------------------
+def test_zone_titre_premieres_lignes_non_vides():
+    texte = "\n\n".join(f"ligne {i}" for i in range(1, 30))
+    zone = zone_titre(texte)
+    assert zone.splitlines() == [f"ligne {i}" for i in range(1, 16)]
+
+
+def test_zone_titre_plafond_caracteres():
+    assert len(zone_titre("x" * 5000)) == 1000
+
+
+def test_sous_dossier_titre_prioritaire(registre):
+    diplomes = trouver_categorie(registre, "diplomes")
+    corps = "\n".join(["texte"] * 20)
+    texte = f"DIPLÔME DE LICENCE\n{corps}\nOuvre l'accès au Master."
+    assert choisir_sous_dossier(diplomes, texte) == "Licence"
+
+
+def test_sous_dossier_corps_si_titre_muet(registre):
+    diplomes = trouver_categorie(registre, "diplomes")
+    corps = "\n".join(["texte"] * 20)
+    assert choisir_sous_dossier(diplomes, f"UNIVERSITÉ EXEMPLE\n{corps}\nDEUG") == "DEUG"
+
+
+def test_sous_dossier_plusieurs_dans_le_titre(registre):
+    diplomes = trouver_categorie(registre, "diplomes")
+    assert choisir_sous_dossier(diplomes, "Licence et Master\nDEUG") == "Autres"
 
 
 # --- 2. Normalisation ------------------------------------------------------

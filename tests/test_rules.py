@@ -91,7 +91,8 @@ def test_recu_aucun_indice():
     ("Attestation de salaire : l'employeur atteste le montant perçu", "attestations", "Autres"),
     ("CONTRAT DE PRESTATION entre les soussignés, Article 3 : durée", "contrats", None),
     ("RELEVÉ DE COMPTE - Agence Centre - Solde au 30/09/2026", "banque", None),
-    ("Relevé d'identité bancaire : RIB, IBAN, agence Exemple", "banque", None),
+    ("EXTRAIT DE COMPTE du mois - Solde créditeur", "banque", None),
+    ("CONTRAT DE TRAVAIL à durée indéterminée entre les soussignés", "contrats", None),
 ])
 def test_chaque_categorie_du_registre(texte, categorie, sous_dossier):
     r = analyser(texte, REGISTRE)
@@ -111,12 +112,52 @@ def test_verdict_egalite():
     assert (r.categorie, r.verdict, r.sous_dossier) == (None, EGALITE, None)
 
 
-def test_contrat_de_travail_seulement_faible():
-    """FAIBLESSE CONNUE du registre (a trancher avec l'utilisateur) : le mot-cle
-    d'attestation « de travail » compte aussi dans un CONTRAT de travail."""
+def test_contrat_de_travail_n_est_plus_une_attestation():
+    """Corrige : « attestation de travail » remplace « de travail » ; un contrat de
+    travail ne donne plus de point aux attestations."""
     r = analyser("CONTRAT DE TRAVAIL entre les soussignés, Article 3 : durée", REGISTRE)
-    assert r.scores["contrats"] == 3 and r.scores["attestations"] == 1
-    assert (r.categorie, r.verdict) == ("contrats", FAIBLE)
+    assert r.scores["contrats"] == 4 and r.scores["attestations"] == 0
+    assert (r.categorie, r.verdict) == ("contrats", NET)
+
+
+# --- Regle metier banque -----------------------------------------------------
+@pytest.mark.parametrize("texte", [
+    "Relevé d'identité bancaire\nTitulaire : Exemple\nRIB : ...",
+    "ATTESTATION DE RIB\nLa banque Exemple atteste que le compte ...",
+])
+def test_regle_metier_banque(texte):
+    r = analyser(texte, REGISTRE)
+    assert (r.categorie, r.verdict) == ("banque", REGLE_METIER)
+
+
+def test_facture_avec_coordonnees_bancaires_reste_nette():
+    texte = FACTURE_NETTE + "\nRèglement par virement : RIB, IBAN, agence Exemple"
+    r = analyser(texte, REGISTRE)
+    assert (r.categorie, r.verdict) == ("factures", NET) and r.scores["banque"] == 0
+
+
+# --- Zone titre : "net" exige un mot-cle du type dans le titre ----------------
+CORPS_NEUTRE = "\n".join(f"Paragraphe {i} sans mot-clé." for i in range(20))
+
+
+def test_net_exige_un_mot_cle_dans_le_titre():
+    """Mots-cles d'un diplome seulement dans le corps (ex. une lettre qui parle
+    d'un diplome) : plus de verdict net."""
+    texte = f"DEMANDE\nMonsieur le Doyen,\n{CORPS_NEUTRE}\nMon diplôme de Licence, mention Bien."
+    r = analyser(texte, REGISTRE)
+    assert r.scores["diplomes"] >= 2 and r.scores_titre["diplomes"] == 0
+    assert (r.categorie, r.verdict) == ("diplomes", FAIBLE)
+
+
+def test_net_avec_titre():
+    texte = f"DIPLÔME DE LICENCE\n{CORPS_NEUTRE}\nmention Bien"
+    r = analyser(texte, REGISTRE)
+    assert r.scores_titre["diplomes"] >= 1 and r.verdict == NET
+
+
+def test_regle_metier_ne_depend_pas_du_titre():
+    texte = f"FACULTÉ EXEMPLE\n{CORPS_NEUTRE}\nAttestation de réussite au DEUG"
+    assert analyser(texte, REGISTRE).verdict == REGLE_METIER
 
 
 def test_un_seul_indice_est_faible():

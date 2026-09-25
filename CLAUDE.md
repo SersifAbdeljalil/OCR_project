@@ -42,7 +42,8 @@ MVP pragmatique, 100 % LOCAL, budget 0 €.
    de sortie (.txt / .json). masking.py sert UNIQUEMENT aux affichages (terminal, logs,
    rapports de test) : aucun script n'affiche jamais une valeur sensible, seulement
    « trouvé / absent ».
-3. Classification LOCALE : regex d'abord, Phi-4-mini seulement si les regex hésitent.
+3. Classification LOCALE : regex d'abord ; Phi-4-mini confirme TOUJOURS, sauf quand une
+   règle métier s'applique (voir la règle de confiance A modifiée).
    JEV / OpenRouter ABANDONNÉ pour le MVP (pas de crédits, loi 09-08 / CNDP). Possible en v2.
 4. Extraction des champs : Phi-4-mini, prompt par type, sortie JSON schema.
    Réglages Ollama : num_ctx=2048, num_gpu=0, keep_alive=0, temperature=0.
@@ -89,12 +90,17 @@ MVP pragmatique, 100 % LOCAL, budget 0 €.
     l'utilisateur marque chaque résultat « correct » ou « faux » dans un fichier de revue.
     On calcule ensuite le taux de réussite.
 
-## Règle de confiance (décision A, validée)
+## Règle de confiance (décision A, MODIFIÉE le 2026-09-25, appliquée dans classifier.py)
 | Situation | Confiance |
 |---|---|
-| Regex nettes (1 seul type, >= 2 indices) | 0.95, sans LLM |
-| Regex et Phi-4-mini d'accord | 0.90 |
+| Règle métier (seule suffisante sans LLM) | 0.95, sans LLM |
+| Verdict « net » + Phi-4-mini d'accord | 0.95 |
+| Verdict « net » + Phi-4-mini en désaccord | 0.60 |
+| Verdict « faible » + Phi-4-mini d'accord | 0.90 |
 | Désaccord, égalité ou aucun indice regex | 0.60 |
+Un verdict « net » ne suffit PLUS seul : le LLM confirme toujours.
+(« net » = >= 2 indices, un seul type, et au moins un mot-clé du type dans la zone titre.)
+Signal qualité : confiance OCR moyenne du document < 0.80 -> validation humaine.
 Confiance >= 0.90 -> rangement automatique, sinon -> A_Valider/.
 On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 
@@ -328,6 +334,33 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     * part_arabe = 0 % partout : le signal ne voit que le texte NATIF ; sur un scan, le
       modèle OCR latin ne produit pas de lettres arabes -> la confiance OCR basse est le
       seul indice pour les scans bilingues.
+- FAIT (étape b7-bis) : zone titre + corrections GÉNÉRALES du registre (pas d'ajustement
+  au jeu de test).
+  - Zone titre (config.py) : 15 premières lignes non vides, max 1000 caractères
+    (en-tête de 4 à 8 lignes avant le titre ; l'OCR découpe plus finement ; au-delà,
+    c'est le corps du texte). « net » exige >= 1 mot-clé du type dans la zone titre,
+    sinon « faible ». La règle métier ne dépend pas du titre.
+    choisir_sous_dossier regarde d'abord la zone titre, puis tout le texte si le titre
+    ne dit rien (s'applique aussi à filer.py).
+  - Banque : rib, iban, agence seuls RETIRÉS (présents sur les factures). Mots-clés :
+    releve de compte, extrait de compte, releve d'identite bancaire, solde. Nouvelle règle
+    métier : « releve d'identite bancaire » ou « attestation de rib » -> banque.
+  - Attestations : « de travail » -> « attestation de travail » (« de scolarite »,
+    « de salaire » inchangés). Contrats : + « contrat de travail ».
+  - Tests : 309 au total.
+  - verifier_rules.py AVANT -> APRÈS (catégorie, verdict, sous-dossier) :
+      4 modèles de facture   : factures faible -> factures NET (banque:1 disparu)
+      rip.pdf                : banque net -> banque RÈGLE MÉTIER (0.95 sans LLM)
+      damand a monsieur...   : diplomes net Autres -> diplomes net MASTER (un mot-clé
+                               diplôme est dans la zone titre) : toujours un risque,
+                               désormais couvert par la confirmation LLM obligatoire
+      RIB CDG.pdf            : attestations faible -> attestations NET (banque:1 venait de
+                               rib/iban/agence) : régression apparente, la règle métier
+                               banque ne s'applique pas ; confirmation LLM obligatoire
+      deug.pdf               : inchangé (règle métier, sous-dossier Autres)
+      11 autres fichiers     : inchangés
+    Bilan : règle métier 2, net 6, faible 3, égalité 2, aucun indice 4.
+    Sans LLM (nouvelle règle A) : seulement les 2 règles métier (deug.pdf, rip.pdf).
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -357,5 +390,6 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b6a) FAIT : faisabilité PaddleOCR (tests/essai_ocr.py) + requirements.txt.
    b6b) FAIT : src/ocr_worker.py.
    b7) FAIT : src/rules.py.
+   b7-bis) FAIT : zone titre + corrections du registre.
    Suite : src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).

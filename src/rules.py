@@ -6,8 +6,9 @@ sous-dossiers. Aucune regle n'est ecrite en dur ici.
 
 analyser(texte) renvoie :
     - les scores (nombre de mots-cles trouves par categorie) ;
-    - le verdict : "regle metier" (prioritaire), "net" (au moins 2 indices et un
-      seul type), "faible" (un type devant mais concurrence), "egalite" ou
+    - le verdict : "regle metier" (prioritaire), "net" (au moins 2 indices, un
+      seul type, ET au moins un mot-cle de ce type dans la ZONE TITRE), "faible"
+      (un type devant mais concurrence, ou rien dans le titre), "egalite" ou
       "aucun indice" ;
     - le sous-dossier (si une categorie est trouvee) ;
     - des SIGNAUX de qualite (texte arabe, confiance OCR), renvoyes SANS decider :
@@ -21,7 +22,8 @@ import re
 from dataclasses import dataclass, field
 
 from src.config import (SEUIL_CONFIANCE_LIGNE_OCR, choisir_sous_dossier,
-                        normaliser, registre_par_defaut, trouver_categorie)
+                        normaliser, registre_par_defaut, trouver_categorie,
+                        zone_titre)
 
 # --- Verdicts possibles ----------------------------------------------------
 REGLE_METIER = "regle metier"
@@ -50,6 +52,7 @@ class VerdictRegles:
     categorie: str = None                    # nom du registre, ou None
     verdict: str = AUCUN_INDICE
     scores: dict = field(default_factory=dict)
+    scores_titre: dict = field(default_factory=dict)   # memes scores, zone titre seule
     regle_metier: str = None                 # description de la regle appliquee
     sous_dossier: str = None
     signaux: SignauxQualite = field(default_factory=SignauxQualite)
@@ -73,14 +76,18 @@ def appliquer_regles_metier(texte: str, registre: dict):
     return None
 
 
-def verdict_scores(scores: dict):
-    """(categorie ou None, verdict) d'apres les scores seuls."""
+def verdict_scores(scores: dict, scores_titre: dict = None):
+    """(categorie ou None, verdict) d'apres les scores.
+    scores_titre : scores de la zone titre ; si fourni, "net" exige au moins un
+    mot-cle du type gagnant dans le titre (sinon "faible")."""
     classes = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
     if not classes or classes[0][1] == 0:
         return None, AUCUN_INDICE
     (premier, s1), s2 = classes[0], (classes[1][1] if len(classes) > 1 else 0)
     if s1 >= 2 and s2 == 0:
-        return premier, NET               # un seul type, au moins 2 indices
+        if scores_titre is not None and scores_titre.get(premier, 0) == 0:
+            return premier, FAIBLE        # indices seulement dans le corps du texte
+        return premier, NET               # un seul type, au moins 2 indices, titre
     if s1 > s2:
         return premier, FAIBLE            # un type devant, mais concurrence
     return None, EGALITE                  # impossible de departager
@@ -118,7 +125,8 @@ def analyser(texte: str, registre: dict = None, texte_natif: str = None,
     registre = registre or registre_par_defaut()
     texte = texte or ""
     scores = calculer_scores(texte, registre)
-    categorie, verdict = verdict_scores(scores)
+    scores_titre = calculer_scores(zone_titre(texte), registre)
+    categorie, verdict = verdict_scores(scores, scores_titre)
     description = None
 
     metier = appliquer_regles_metier(texte, registre)
@@ -131,7 +139,7 @@ def analyser(texte: str, registre: dict = None, texte_natif: str = None,
         sous_dossier = choisir_sous_dossier(trouver_categorie(registre, categorie), texte)
 
     return VerdictRegles(
-        categorie=categorie, verdict=verdict, scores=scores,
+        categorie=categorie, verdict=verdict, scores=scores, scores_titre=scores_titre,
         regle_metier=description, sous_dossier=sous_dossier,
         signaux=signaux_qualite(texte if texte_natif is None else texte_natif,
                                 confiances_ocr))
