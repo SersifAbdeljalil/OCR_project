@@ -1,2 +1,7 @@
 .env
 .venv
+__pycache__/
+Folder_Entree/
+Folder_Sortie/
+data/
+tests/docs_test/
