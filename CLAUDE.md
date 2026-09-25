@@ -392,6 +392,44 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     fournisseur correct, MAIS montant_ttc = null alors que « Total TTC : 1 200,00 DH »
     est dans le texte : à surveiller pour extractor.py (prompt, schéma, ou extraction
     des montants par regex).
+  - NOTE POUR b10 (extractor.py) : extraction HYBRIDE envisagée : regex pour montants,
+    dates, numéros, CIN, RIB, IBAN, ICE ; LLM seulement pour les champs libres
+    (fournisseur, objet, parties...). Décision à prendre à b10 AVEC DES MESURES.
+- FAIT (étape b9) : `src/classifier.py`.
+  - `classer(texte, registre, moteur, texte_natif, confiances_ocr)` -> ResultatClassification
+    (categorie, sous_dossier, confiance, necessite_validation_humaine, categorie_proposee,
+    raisons, signaux, verdict_regles, categorie_regles, categorie_moteur, moteur_appele,
+    duree_moteur_s, alertes). Applique la règle A MODIFIÉE (voir tableau). En désaccord,
+    la catégorie retenue est celle des mots-clés (sinon celle du moteur) ; l'humain voit
+    les deux. Confiance OCR moyenne < 0,80 (SEUIL_CONFIANCE_OCR_DOCUMENT) -> validation
+    obligatoire, confiance inchangée.
+  - Catégorie découverte : moteur « autre » + nom proposé -> `normaliser_nom` (minuscules,
+    sans accents, _), noms réservés ignorés ; `categorie_proche` (difflib >= 0,80 sur nom,
+    singulier, dossier, ou même premier mot que le singulier) -> catégorie existante gardée
+    à 0,60 ; sinon categorie_proposee + A_Valider/.
+  - MOTEUR INTERCHANGEABLE : interface `MoteurClassification` (verifier, lot, classer) ;
+    `MOTEURS = {"phi4-mini": MoteurPhi4}` ; choix par `config.MOTEUR_CLASSIFICATION`.
+    Nouveau moteur (ex. JEV) = une classe + une ligne dans MOTEURS + le réglage.
+  - `prompts/classification.txt` : $categories (nom, sous-types, informations, construits
+    depuis le registre), $regles (descriptions des règles métier), $texte. Schéma : enum =
+    catégories du registre + « autre », nom_propose. llm.py accepte maintenant des
+    variables de prompt en plus de $texte.
+  - `tests/test_classifier.py` : 41 tests, moteur SIMULÉ (384 au total).
+  - `tests/verifier_classifier.py` (Ollama vérifié vide, OCR d'abord, puis tous les appels
+    avec le modèle chargé, puis déchargement vérifié) sur le jeu de test :
+    9 rangés, 8 A_Valider. OCR 53 s (pic RAM 1896 Mo), chargement du modèle 6,4 s,
+    moteur 309 s pour 15 appels (~20 s par appel, 7,6 à 38,5 s). Modèle déchargé : oui.
+      rangés : 4 modèles de facture (net + accord, 0,95), deug.pdf et rip.pdf (règle
+      métier), et les 3 CV -> diplomes (« faible » + moteur d'accord = 0,90).
+      A_Valider : bac, bac-1-1, bac-2-1, demand eljadida (OCR < 0,80) ; damand a monsieur le
+      doyen (net diplomes, moteur « autre ») ; RIB CDG (attestations / moteur banque) ;
+      america (moteur « autre ») ; cN (aucun indice, moteur banque).
+    CONSTATS : (1) les 3 CV rangés automatiquement dans Diplomes : probable ERREUR de
+    rangement (« faible » + accord = 0,90 suffit) -> à trancher ; (2) pour demand
+    eljadida, le moteur a proposé « avis_d_imposition », qui est l'EXEMPLE écrit dans le
+    prompt : les exemples du prompt biaisent le moteur -> à retirer ; (3) la règle A
+    modifiée a bien bloqué damand (net) et RIB CDG ; (4) pic RAM OCR 1896 Mo, proche
+    de la limite de 2 Go.
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -423,5 +461,6 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b7) FAIT : src/rules.py.
    b7-bis) FAIT : zone titre + corrections du registre.
    b8) FAIT : src/llm.py.
-   Suite : src/classifier.py, src/extractor.py, src/pipeline.py,
+   b9) FAIT : src/classifier.py.
+   Suite : src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).

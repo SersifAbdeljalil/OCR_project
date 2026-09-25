@@ -28,6 +28,10 @@ DOSSIER_TRAITES = "Traites"                 # sous-dossier de Folder_Entree
 DOSSIER_DATA = RACINE / "data"              # resultats intermediaires (interdit en lecture a Claude)
 
 SEUIL_CONFIANCE = 0.90          # >= 0.90 -> rangement automatique (regle A)
+SEUIL_CONFIANCE_OCR_DOCUMENT = 0.80   # confiance OCR moyenne en dessous -> validation humaine
+# Moteur de classification (voir src/classifier.py, dictionnaire MOTEURS).
+# Changer de moteur = changer ce nom (ex. un futur "jev"), sans toucher a classifier.py.
+MOTEUR_CLASSIFICATION = "phi4-mini"
 SEUIL_CARACTERES_PAGE = 50      # page PDF avec moins de caracteres visibles -> OCR requis
 SEUIL_CONFIANCE_LIGNE_OCR = 0.90   # ligne OCR "douteuse" en dessous (signal de qualite)
 

@@ -99,12 +99,15 @@ def tronquer(texte: str, budget: int):
     return coupe + MARQUE_TRONQUE, True
 
 
-def preparer_prompt(nom: str, texte_document: str, dossier: Path = DOSSIER_PROMPTS):
-    """Prompt complet : consigne du fichier + texte tronque. Renvoie (prompt, tronque)."""
+def preparer_prompt(nom: str, texte_document: str, dossier: Path = DOSSIER_PROMPTS,
+                    variables: dict = None):
+    """Prompt complet : consigne du fichier (avec ses autres emplacements, ex.
+    $categories) + texte tronque. Renvoie (prompt, tronque)."""
     modele = charger_prompt(nom, dossier)
-    consigne = modele.substitute(texte="")
+    variables = dict(variables or {})
+    consigne = modele.substitute(texte="", **variables)   # budget calcule sans le texte
     texte, tronque = tronquer(texte_document, budget_caracteres(consigne))
-    return modele.substitute(texte=texte), tronque
+    return modele.substitute(texte=texte, **variables), tronque
 
 
 # --- 2. Verification de la reponse ------------------------------------------
@@ -232,10 +235,11 @@ class ClientOllama:
         return rep
 
     def appeler(self, nom_prompt: str, texte_document: str, schema: dict,
-                dossier_prompts: Path = DOSSIER_PROMPTS) -> ReponseLLM:
+                dossier_prompts: Path = DOSSIER_PROMPTS, variables: dict = None) -> ReponseLLM:
         """Prompt du fichier prompts/<nom_prompt>.txt + texte tronque -> JSON."""
         try:
-            prompt, tronque = preparer_prompt(nom_prompt, texte_document, dossier_prompts)
+            prompt, tronque = preparer_prompt(nom_prompt, texte_document, dossier_prompts,
+                                              variables)
         except Exception as err:                    # fichier absent, emplacement inconnu...
             return ReponseLLM(ok=False, erreur=f"prompt invalide ({type(err).__name__})")
         rep = self.generer_json(prompt, schema)
