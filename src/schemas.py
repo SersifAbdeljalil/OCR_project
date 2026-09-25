@@ -95,9 +95,12 @@ class DocumentSortie(BaseModel):
         return self
 
     # --- Ecriture du fichier .json ---
-    def vers_json(self, indent: int = 2) -> str:
+    def vers_json(self, supplement: dict = None, indent: int = 2) -> str:
         """Texte JSON du document (UTF-8, accents lisibles). Les montants Decimal
-        sont ecrits comme nombres a 2 decimales : 240.50."""
+        sont ecrits comme nombres a 2 decimales : 240.50.
+        `supplement` : cles ajoutees apres le schema unique (ex. pour A_Valider/ :
+        raison, alertes, categorie_proposee)."""
         donnees = self.model_dump(mode="json")   # date -> texte ISO, etc.
         donnees["champs"] = self.champs          # garde les Decimal intacts
+        donnees.update(supplement or {})
         return _vers_json(donnees, indent)

@@ -192,21 +192,27 @@ def envoyer_a_valider(original, raison: str, doc: DocumentSortie = None,
                       alertes: list = None, registre: dict = None,
                       dossier_sortie: Path = DOSSIER_SORTIE,
                       dossier_entree: Path = DOSSIER_ENTREE) -> ResultatRangement:
-    """Depose l'original dans A_Valider/ (nom d'origine nettoye) avec un petit
-    .json qui donne la raison. Sert aussi aux fichiers illisibles (doc=None)."""
+    """Depose l'original dans A_Valider/ (nom d'origine nettoye) avec :
+        - le .txt (texte brut) ;
+        - UN SEUL .json complet : meme schema que les documents ranges, plus
+          raison, alertes et categorie_proposee (pour l'ecran de validation).
+    Sert aussi aux fichiers illisibles (doc=None) : pas de .txt, et un .json aux
+    memes cles, mais vides."""
     original = Path(original)
     alertes = list(alertes or [])
     resultat = ResultatRangement(ok=False, a_valider=True, alertes=alertes)
     dossier = Path(dossier_sortie) / DOSSIER_A_VALIDER
-    info = {
-        "source": original.name,
-        "date": datetime.now().isoformat(timespec="seconds"),
-        "raison": raison,
-        "alertes": alertes,
-        "type_propose": doc.type if doc else None,
-        "confiance_classification": doc.confiance_classification if doc else None,
-    }
-    contenus = {".json": json.dumps(info, ensure_ascii=False, indent=2) + "\n"}
+    supplement = {"raison": raison, "alertes": alertes,
+                  "categorie_proposee": doc.type if doc else None}
+    if doc is not None:
+        contenus = {".txt": doc.texte_brut, ".json": doc.vers_json(supplement) + "\n"}
+    else:
+        vide = {"type": None, "source": original.name,
+                "date_traitement": datetime.now().isoformat(timespec="seconds"),
+                "confiance_classification": None, "champs": {},
+                "necessite_validation_humaine": True, "texte_brut": ""}
+        contenus = {".json": json.dumps({**vide, **supplement},
+                                        ensure_ascii=False, indent=2) + "\n"}
     try:
         if not original.is_file():
             raise ErreurRangement("original introuvable")

@@ -203,8 +203,10 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     ou catégorie absente du registre ; type « autres » -> Folder_Sortie/Autres/ ;
     sinon catégorie + sous-dossier (choisir_sous_dossier). Dossiers créés seulement si absents.
   - `envoyer_a_valider(original, raison, doc=None)` : aussi pour les fichiers illisibles.
-    Le .json de raison contient : source, date, raison, alertes, type_propose,
-    confiance_classification (PAS les champs ni le texte).
+    Dans A_Valider/ (décision du 2026-09-25) : l'original + le .txt + UN SEUL .json complet
+    (même schéma que les documents rangés, plus raison, alertes, categorie_proposee).
+    Fichier illisible (doc=None) : pas de .txt, .json aux mêmes clés mais vides.
+  - Les tirets sont gardés dans les noms (fa-2026-00042, 2026-09-15) : validé.
   - Noms : a-z 0-9 - seulement (aucun caractère interdit Windows), noms réservés
     (CON, NUL, COM1...) suffixés « _doc », chemin complet <= 259 caractères (troncature
     en gardant la place de « _999 »), doublons _1, _2 comparés en minuscules, y compris

@@ -221,12 +221,28 @@ def test_a_valider_si_validation_humaine(dossiers):
                alertes=["totaux : facture sans TVA"])
     assert r.ok and r.a_valider and r.original_deplace
     dossier = sortie / "A_Valider"
-    assert {p.name for p in dossier.iterdir()} == {"scan_ete_15_09.pdf", "scan_ete_15_09.json"}
-    raison = json.loads((dossier / "scan_ete_15_09.json").read_text(encoding="utf-8"))
-    assert raison["raison"] == "validation humaine necessaire"
-    assert raison["alertes"] == ["totaux : facture sans TVA"]
-    assert raison["type_propose"] == "factures" and raison["confiance_classification"] == 0.6
-    assert raison["source"] == "Scan Été 15.09.PDF"
+    assert {p.name for p in dossier.iterdir()} == \
+        {"scan_ete_15_09.pdf", "scan_ete_15_09.txt", "scan_ete_15_09.json"}
+    assert (dossier / "scan_ete_15_09.txt").read_text(encoding="utf-8") == "Facture inventée"
+    texte_json = (dossier / "scan_ete_15_09.json").read_text(encoding="utf-8")
+    info = json.loads(texte_json)
+    # Meme schema que les documents ranges...
+    assert {"type", "source", "date_traitement", "confiance_classification", "champs",
+            "necessite_validation_humaine", "texte_brut"} <= set(info)
+    assert info["type"] == "factures" and info["confiance_classification"] == 0.6
+    assert info["texte_brut"] == "Facture inventée"
+    # ... plus raison, alertes et categorie proposee
+    assert info["raison"] == "validation humaine necessaire"
+    assert info["alertes"] == ["totaux : facture sans TVA"]
+    assert info["categorie_proposee"] == "factures"
+
+
+def test_a_valider_montants_a_deux_decimales(dossiers):
+    entree, sortie = dossiers
+    d = doc(champs={"montant_ttc": Decimal("240.5")}, confiance=0.60, validation=True)
+    ranger(creer_original(entree), d, dossiers)
+    texte_json = (sortie / "A_Valider" / "scan_001.json").read_text(encoding="utf-8")
+    assert '"montant_ttc": 240.50' in texte_json
 
 
 def test_a_valider_si_categorie_absente_du_registre(dossiers):
@@ -234,8 +250,9 @@ def test_a_valider_si_categorie_absente_du_registre(dossiers):
     d = doc("bulletin_paie", {"titre": "Bulletin"}, confiance=0.95)
     r = ranger(creer_original(entree), d, dossiers)
     assert r.a_valider
-    raison = json.loads((sortie / "A_Valider" / "scan_001.json").read_text(encoding="utf-8"))
-    assert raison["raison"] == "categorie absente du registre"
+    info = json.loads((sortie / "A_Valider" / "scan_001.json").read_text(encoding="utf-8"))
+    assert info["raison"] == "categorie absente du registre"
+    assert info["categorie_proposee"] == "bulletin_paie"
 
 
 def test_a_valider_fichier_illisible_sans_document(dossiers):
@@ -244,8 +261,12 @@ def test_a_valider_fichier_illisible_sans_document(dossiers):
     r = envoyer_a_valider(original, "fichier illisible (corrompu)",
                           dossier_sortie=sortie, dossier_entree=entree)
     assert r.ok and r.a_valider
-    raison = json.loads((sortie / "A_Valider" / "corrompu.json").read_text(encoding="utf-8"))
-    assert raison["type_propose"] is None
+    assert {p.name for p in (sortie / "A_Valider").iterdir()} == \
+        {"corrompu.pdf", "corrompu.json"}                     # pas de texte : pas de .txt
+    info = json.loads((sortie / "A_Valider" / "corrompu.json").read_text(encoding="utf-8"))
+    assert info["categorie_proposee"] is None and info["type"] is None
+    assert info["raison"] == "fichier illisible (corrompu)"
+    assert info["necessite_validation_humaine"] is True and info["champs"] == {}
 
 
 def test_a_valider_original_json_ne_se_melange_pas(dossiers):
