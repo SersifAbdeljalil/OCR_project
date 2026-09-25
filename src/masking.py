@@ -43,11 +43,28 @@ MOTIFS_SENSIBLES = [
 ]
 
 
+# Contexte CIN : tout ce qui suit "CIN", "C.I.N", "CNIE" ou "carte nationale"
+# (casse ignoree, avec ou sans ":" / "n°") est TOUJOURS masque, meme en
+# minuscules avec un espace ("cin ab 123456"). Le mot-cle, lui, reste visible.
+MOTIF_APRES_CIN = re.compile(
+    # Le mot-cle (garde a l'affichage)...
+    r"(?P<cle>\b(?:c\.?\s?i\.?\s?n\b\.?|c\.?n\.?i\.?e\b\.?"
+    r"|carte\s+nationale(?:\s+d['’]\s?identit[eé](?:\s+[eé]lectronique)?)?)"
+    # ... suivi de separateurs facultatifs : ":", "n°", "no", "numero"...
+    r"(?:\s*(?::|n\s?[°º]|no\.?|num[eé]ro)\s*)*\s*)"
+    # ... puis la valeur masquee : lettres + chiffres (ab 123456), sinon le mot suivant.
+    r"(?P<val>(?:[a-z]{1,3}[\s.-]?)?\d(?:\s?\d)*|[^\s,;]+)",
+    re.IGNORECASE)
+
+
 def masquer_texte(texte) -> str:
     """Remplace par [MASQUÉ] tout ce qui ressemble a une donnee sensible."""
     if texte is None:
         return ""
     resultat = str(texte)
+    # 1) D'abord ce qui suit un mot-cle CIN (garde le mot-cle, masque la valeur)
+    resultat = MOTIF_APRES_CIN.sub(lambda m: m.group("cle") + MASQUE, resultat)
+    # 2) Puis les motifs generaux
     for _nom, motif in MOTIFS_SENSIBLES:
         resultat = motif.sub(MASQUE, resultat)
     return resultat

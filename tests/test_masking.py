@@ -32,6 +32,35 @@ def test_cin(texte, secret):
     verifier_masque(texte, secret)
 
 
+@pytest.mark.parametrize("texte, secret, cle", [
+    # Apres un mot-cle CIN : toujours masque, meme en minuscules avec un espace
+    ("cin ab 123456", "123456", "cin"),
+    ("CIN : ab 123456 delivree a Rabat", "ab 123456", "CIN"),
+    ("CIN:AB123456", "AB123456", "CIN"),
+    ("C.I.N. n° j 54321", "54321", "C.I.N."),
+    ("c.i.n n°xy998877", "998877", "c.i.n"),
+    ("CNIE : bk 1234567", "1234567", "CNIE"),
+    ("cnie numéro ab 12345", "12345", "cnie"),
+    ("Carte nationale d'identité n° ab 123456", "123456", "Carte nationale d'identité"),
+    ("carte nationale : x 99999", "99999", "carte nationale"),
+    ("CARTE NATIONALE D’IDENTITÉ ÉLECTRONIQUE N° AB123456", "AB123456", "CARTE NATIONALE"),
+])
+def test_valeur_apres_mot_cle_cin(texte, secret, cle):
+    resultat = verifier_masque(texte, secret)
+    assert cle in resultat          # le mot-cle reste visible, seule la valeur disparait
+
+
+def test_mot_cle_cin_masque_meme_une_valeur_inhabituelle():
+    """Masquer trop plutot que pas assez : le mot qui suit est masque."""
+    assert masquer_texte("CIN abcdef") == f"CIN {MASQUE}"
+
+
+def test_mots_proches_de_cin_non_masques():
+    """'cinq', 'vaccin', 'cinema' ne sont pas le mot-cle CIN."""
+    texte = "Cinq places au cinema apres le vaccin"
+    assert masquer_texte(texte) == texte
+
+
 @pytest.mark.parametrize("texte, secret", [
     ("RIB : 011780000012345678901234", "011780000012345678901234"),
     ("RIB : 011 780 0000123456789012 34", "0000123456789012"),
