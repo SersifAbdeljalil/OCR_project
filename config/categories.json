@@ -19,7 +19,13 @@
     {
       "nom": "diplomes",
       "dossier": "Diplomes",
-      "sous_dossiers": ["DEUG", "Licence", "Master", "Doctorat", "Autres"],
+      "sous_dossiers": [
+        {"nom": "DEUG", "mots_cles": ["\\bdeug\\b"]},
+        {"nom": "Licence", "mots_cles": ["\\blicence\\b"]},
+        {"nom": "Master", "mots_cles": ["\\bmaster\\b"]},
+        {"nom": "Doctorat", "mots_cles": ["\\bdoctorat\\b"]},
+        {"nom": "Autres", "mots_cles": []}
+      ],
       "mots_cles": [
         "\\bdiplome\\b",
         "\\b(deug|licence|master|doctorat|baccalaureat)\\b",
@@ -32,7 +38,11 @@
     {
       "nom": "attestations",
       "dossier": "Attestations",
-      "sous_dossiers": ["Travail", "Scolarite", "Autres"],
+      "sous_dossiers": [
+        {"nom": "Travail", "mots_cles": ["\\battestation de travail\\b"]},
+        {"nom": "Scolarite", "mots_cles": ["\\b(attestation|certificat) de scolarite\\b"]},
+        {"nom": "Autres", "mots_cles": []}
+      ],
       "mots_cles": [
         "\\battestation\\b",
         "\\b(atteste|certifie)\\b",

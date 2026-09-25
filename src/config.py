@@ -3,7 +3,7 @@ config.py - Chargement et verification du registre des categories.
 
 Le registre (config/categories.json) dit a l'agent :
     - quelles categories existent et dans quel dossier les ranger ;
-    - quels mots-cles (regex) reconnaissent chaque categorie ;
+    - quels mots-cles (regex) reconnaissent chaque categorie et chaque sous-dossier ;
     - quels champs extraire ;
     - quelles regles metier tranchent seules (ex. attestation de reussite -> diplome).
 
@@ -98,6 +98,37 @@ def _verifier_champs(champs, ou: str, erreurs: list) -> None:
         erreurs.append(f"{ou} : champ en double")
 
 
+def _verifier_sous_dossiers(sous_dossiers, ou: str, erreurs: list) -> None:
+    """Sous-dossiers : noms valides sans doublon, mots-cles valides, et un
+    sous-dossier Autres obligatoire (sans mots-cles : c'est le choix par defaut)."""
+    if not isinstance(sous_dossiers, list):
+        erreurs.append(f"{ou} : sous_dossiers doit etre une liste")
+        return
+    if not sous_dossiers:
+        return                                  # categorie sans sous-dossier : permis
+    noms_vus = set()
+    for sd in sous_dossiers:
+        nom = sd.get("nom", "") if isinstance(sd, dict) else ""
+        ou_sd = f"{ou}, sous-dossier {nom!r}"
+        if not isinstance(nom, str) or not MOTIF_DOSSIER.match(nom):
+            erreurs.append(f"{ou_sd} : nom de sous-dossier invalide")
+            continue
+        if nom.lower() in noms_vus:
+            erreurs.append(f"{ou_sd} : sous-dossier en double")
+        noms_vus.add(nom.lower())
+        mots_cles = sd.get("mots_cles", [])
+        if nom == DOSSIER_AUTRES:
+            if mots_cles:
+                erreurs.append(f"{ou_sd} : Autres ne doit pas avoir de mots-cles")
+            continue
+        if not mots_cles:
+            erreurs.append(f"{ou_sd} : aucun mot-cle")
+        for motif in mots_cles:
+            _verifier_motif(motif, ou_sd, erreurs)
+    if DOSSIER_AUTRES not in {sd.get("nom") for sd in sous_dossiers if isinstance(sd, dict)}:
+        erreurs.append(f"{ou} : sous-dossier {DOSSIER_AUTRES!r} obligatoire")
+
+
 # --- 3. Verification du registre complet -----------------------------------
 def verifier_registre(registre: dict) -> list:
     """Renvoie la liste des problemes du registre (liste vide = registre valide)."""
@@ -135,12 +166,7 @@ def verifier_registre(registre: dict) -> list:
         else:
             dossiers.add(dossier.lower())
 
-        # Sous-dossiers : memes regles, sans doublon
-        sous = cat.get("sous_dossiers", [])
-        if any(not isinstance(s, str) or not MOTIF_DOSSIER.match(s) for s in sous):
-            erreurs.append(f"{ou} : nom de sous-dossier invalide")
-        if len({s.lower() for s in sous if isinstance(s, str)}) != len(sous):
-            erreurs.append(f"{ou} : sous-dossier en double")
+        _verifier_sous_dossiers(cat.get("sous_dossiers", []), ou, erreurs)
 
         # Mots-cles : au moins un, tous valides, sans doublon
         mots_cles = cat.get("mots_cles", [])
@@ -203,3 +229,19 @@ def champs_attendus(registre: dict, nom_type: str) -> list:
     cat = trouver_categorie(registre, nom_type)
     base = cat["champs"] if cat else registre["champs_generiques"]
     return list(dict.fromkeys(base + registre["champs_sensibles"]))
+
+
+def choisir_sous_dossier(categorie: dict, texte: str):
+    """Choisit le sous-dossier d'un document, SANS LLM :
+        - exactement un sous-dossier reconnu -> ce sous-dossier ;
+        - aucun ou plusieurs                 -> "Autres" ;
+        - categorie sans sous-dossiers       -> None (rangement a la racine).
+    Renvoie seulement un NOM de dossier, jamais d'extrait du texte."""
+    sous_dossiers = categorie.get("sous_dossiers", [])
+    if not sous_dossiers:
+        return None
+    t = normaliser(texte)
+    reconnus = [sd["nom"] for sd in sous_dossiers
+                if sd["nom"] != DOSSIER_AUTRES
+                and any(re.search(motif, t) for motif in sd["mots_cles"])]
+    return reconnus[0] if len(reconnus) == 1 else DOSSIER_AUTRES

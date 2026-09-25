@@ -12,7 +12,8 @@ import re
 import pytest
 
 from src.config import (ErreurRegistre, champs_attendus, charger_registre,
-                        normaliser, trouver_categorie, verifier_registre)
+                        choisir_sous_dossier, normaliser, trouver_categorie,
+                        verifier_registre)
 
 
 # --- Outils ----------------------------------------------------------------
@@ -34,11 +35,16 @@ def test_registre_du_projet_valide(registre):
     assert noms == ["factures", "diplomes", "attestations", "contrats", "banque"]
 
 
+def noms_sous_dossiers(registre, nom_categorie):
+    return [sd["nom"] for sd in trouver_categorie(registre, nom_categorie)["sous_dossiers"]]
+
+
 def test_sous_dossiers_prevus(registre):
-    assert trouver_categorie(registre, "diplomes")["sous_dossiers"] == \
+    assert noms_sous_dossiers(registre, "diplomes") == \
         ["DEUG", "Licence", "Master", "Doctorat", "Autres"]
-    assert trouver_categorie(registre, "attestations")["sous_dossiers"] == \
+    assert noms_sous_dossiers(registre, "attestations") == \
         ["Travail", "Scolarite", "Autres"]
+    assert noms_sous_dossiers(registre, "factures") == []
 
 
 def test_regle_metier_attestation_de_reussite(registre):
@@ -121,6 +127,44 @@ def test_champ_en_double_refuse(registre):
     assert erreurs_contiennent(registre, "champ en double")
 
 
+def test_sous_dossier_autres_obligatoire(registre):
+    diplomes = trouver_categorie(registre, "diplomes")
+    diplomes["sous_dossiers"] = [sd for sd in diplomes["sous_dossiers"]
+                                 if sd["nom"] != "Autres"]
+    assert erreurs_contiennent(registre, "'Autres' obligatoire")
+
+
+def test_sous_dossier_sans_mot_cle_refuse(registre):
+    trouver_categorie(registre, "diplomes")["sous_dossiers"][0]["mots_cles"] = []
+    assert erreurs_contiennent(registre, "sous-dossier 'DEUG' : aucun mot-cle")
+
+
+def test_sous_dossier_regex_invalide_refusee(registre):
+    trouver_categorie(registre, "diplomes")["sous_dossiers"][0]["mots_cles"] = [r"\b(deug"]
+    assert erreurs_contiennent(registre, "regex invalide")
+
+
+def test_sous_dossier_chiffre_en_clair_refuse(registre):
+    trouver_categorie(registre, "diplomes")["sous_dossiers"][1]["mots_cles"] = [r"\blicence 3\b"]
+    assert erreurs_contiennent(registre, "contient un chiffre")
+
+
+def test_sous_dossier_nombre_en_lettres_refuse(registre):
+    trouver_categorie(registre, "diplomes")["sous_dossiers"][2]["mots_cles"] = [r"\bmaster deux\b"]
+    assert erreurs_contiennent(registre, "toutes lettres")
+
+
+def test_sous_dossier_en_double_refuse(registre):
+    sous = trouver_categorie(registre, "diplomes")["sous_dossiers"]
+    sous.insert(0, {"nom": "deug", "mots_cles": [r"\bdeug\b"]})   # meme nom, autre casse
+    assert erreurs_contiennent(registre, "sous-dossier en double")
+
+
+def test_autres_avec_mots_cles_refuse(registre):
+    trouver_categorie(registre, "diplomes")["sous_dossiers"][-1]["mots_cles"] = [r"\bbts\b"]
+    assert erreurs_contiennent(registre, "Autres ne doit pas avoir de mots-cles")
+
+
 def test_toutes_les_erreurs_sont_listees(registre):
     """On ne s'arrete pas a la premiere erreur : l'humain voit tout d'un coup."""
     registre["categories"][0]["nom"] = "Factures"
@@ -165,3 +209,38 @@ def test_champs_categorie_decouverte(registre):
 def test_champs_sans_doublon_pour_banque(registre):
     champs = champs_attendus(registre, "banque")
     assert champs.count("rib") == 1 and champs.count("iban") == 1
+
+
+# --- 6. Choix du sous-dossier (phrases inventees) --------------------------
+@pytest.mark.parametrize("texte, attendu", [
+    # Exactement un sous-dossier reconnu -> ce sous-dossier
+    ("Diplôme d'Études Universitaires Générales (DEUG), mention Bien", "DEUG"),
+    ("DIPLÔME DE LICENCE EN SCIENCES ÉCONOMIQUES", "Licence"),
+    ("Le grade de Master est conféré à Titulaire Exemple", "Master"),
+    ("Diplôme national de Doctorat en droit", "Doctorat"),
+    # Aucun -> Autres
+    ("Diplôme de Technicien Supérieur (BTS), mention Assez Bien", "Autres"),
+    ("Diplôme du Baccalauréat, série Sciences", "Autres"),
+    # Plusieurs -> Autres (impossible de trancher sans risque)
+    ("Titulaire d'une Licence, admis en première année de Master", "Autres"),
+])
+def test_choisir_sous_dossier_diplomes(registre, texte, attendu):
+    diplomes = trouver_categorie(registre, "diplomes")
+    assert choisir_sous_dossier(diplomes, texte) == attendu
+
+
+@pytest.mark.parametrize("texte, attendu", [
+    ("ATTESTATION DE TRAVAIL - la société Exemple atteste...", "Travail"),
+    ("Attestation de scolarité pour l'année en cours", "Scolarite"),
+    ("CERTIFICAT DE SCOLARITÉ", "Scolarite"),
+    ("Attestation de salaire", "Autres"),                          # aucun
+    ("Attestation de travail et certificat de scolarité", "Autres"),  # plusieurs
+])
+def test_choisir_sous_dossier_attestations(registre, texte, attendu):
+    attestations = trouver_categorie(registre, "attestations")
+    assert choisir_sous_dossier(attestations, texte) == attendu
+
+
+def test_choisir_sous_dossier_categorie_sans_sous_dossier(registre):
+    factures = trouver_categorie(registre, "factures")
+    assert choisir_sous_dossier(factures, "Facture de Licence logicielle") is None
