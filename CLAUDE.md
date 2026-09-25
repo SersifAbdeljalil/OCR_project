@@ -29,10 +29,19 @@ MVP pragmatique, 100 % LOCAL, budget 0 €.
 - PaddleOCR et Ollama ne doivent JAMAIS tourner en même temps (RAM).
 
 ## Architecture validée
-1. Extraction texte : PyMuPDF si PDF natif, DOCX via python-docx, PaddleOCR 2.x si scan/image
-   (PaddleOCR lancé dans un sous-process pour libérer la RAM à la fin).
-2. Masquage par regex du CIN et du RIB AVANT tout traitement (seulement près des mots-clés
-   CIN / C.I.N / CNIE ; RIB = 24 chiffres). Ne pas masquer les n° de facture type FA123456.
+1. Extraction texte selon le format :
+   - PDF natif : PyMuPDF ; PDF scanné et images : PaddleOCR 2.x
+     (PaddleOCR lancé dans un sous-process pour libérer la RAM à la fin) ;
+   - DOCX et DOTX : python-docx ; XLS : xlrd ; XLSX : openpyxl.
+   A_Valider/ uniquement pour les fichiers illisibles (corrompus, protégés, format inconnu).
+   L'agent ne plante jamais sur un document : toute erreur de lecture ou de traitement
+   envoie le document dans A_Valider/ avec la raison, et le traitement continue avec
+   le document suivant.
+2. Données sensibles (décision du 2026-09-25, remplace l'ancien masquage) : on extrait TOUT,
+   y compris cin, rib, iban, date_naissance, adresse. Plus aucun masquage dans les fichiers
+   de sortie (.txt / .json). masking.py sert UNIQUEMENT aux affichages (terminal, logs,
+   rapports de test) : aucun script n'affiche jamais une valeur sensible, seulement
+   « trouvé / absent ».
 3. Classification LOCALE : regex d'abord, Phi-4-mini seulement si les regex hésitent.
    JEV / OpenRouter ABANDONNÉ pour le MVP (pas de crédits, loi 09-08 / CNDP). Possible en v2.
 4. Extraction des champs : Phi-4-mini, prompt par type, sortie JSON schema.
@@ -43,8 +52,29 @@ MVP pragmatique, 100 % LOCAL, budget 0 €.
 7. Interface Streamlit : image + tableau éditable, pour les documents de A_Valider/.
 8. Dossiers de sortie : les dossiers de sortie ne sont jamais créés à l'avance. L'agent
    (filer.py) les crée à la demande, quand le premier document d'un type arrive, et
-   uniquement avec les noms exacts de la liste fixe définie dans config.yaml. Un type
-   inconnu va dans Autres/ ou A_Valider/, jamais dans un dossier inventé.
+   uniquement avec les noms exacts du registre config/categories.json (point 9).
+   Un type absent du registre ne crée jamais de dossier tout seul : il passe par
+   A_Valider/ et la validation humaine.
+9. Catégories découvertes (décision du 2026-09-25, remplace la « liste fixe ») :
+   - Registre config/categories.json (versionné dans git, lisible par Claude), initialisé avec :
+     factures, diplomes (DEUG, Licence, Master, Doctorat, Autres),
+     attestations (Travail, Scolarite, Autres), contrats, banque.
+   - Chaque catégorie du registre a une liste de mots-clés (motifs regex). Les catégories
+     de départ reçoivent les regex actuelles de test_classification.py.
+   - Règle stricte : un mot-clé ne contient JAMAIS de nom de personne ni de numéro.
+   - L'agent consulte le registre avant chaque rangement.
+   - Type connu : rangement normal (règle de confiance A).
+   - Type nouveau : Phi-4-mini propose un nom ; le code le normalise (minuscules,
+     sans accents) puis le compare aux catégories existantes (similarité) pour éviter
+     les doublons. S'il est vraiment nouveau : A_Valider/ avec la proposition.
+     L'humain décide une seule fois dans Streamlit (créer / ranger dans Autres /
+     renommer). À ce moment, Phi-4-mini propose 3 à 5 mots-clés, l'humain les confirme
+     ou les corrige, puis la catégorie ET ses mots-clés sont ajoutés au registre.
+   - La règle de confiance A s'applique ensuite à toutes les catégories de la même façon.
+   - Champs génériques d'une catégorie découverte : titre, personne, organisme, date.
+10. Évaluation : pas d'attendus rempli à l'avance. L'agent traite le jeu de test, puis
+    l'utilisateur marque chaque résultat « correct » ou « faux » dans un fichier de revue.
+    On calcule ensuite le taux de réussite.
 
 ## Règle de confiance (décision A, validée)
 | Situation | Confiance |
@@ -57,13 +87,16 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 
 ## Catégories et champs
 - Factures/ : fournisseur, date_facture, numero, montant_ht, tva, montant_ttc
-- Diplomes/ (DEUG, Licence, Master, Doctorat) : titulaire, intitule, etablissement,
+- Diplomes/ (DEUG, Licence, Master, Doctorat, Autres) : titulaire, intitule, etablissement,
   date_obtention, mention. Une « attestation de réussite » d'un diplôme va dans Diplomes/.
 - Attestations/ (Travail, Scolarite, Autres) : emetteur, beneficiaire, objet, date
 - Contrats/ : parties, objet, date_signature, duree
-- A_Valider/ : confiance < 0.90, texte arabe, scan groupé, illisible
+- Banque/ : banque, titulaire, periode, objet, rib, iban
+- Catégorie découverte (validée par l'humain) : titre, personne, organisme, date
+- A_Valider/ : confiance < 0.90, type nouveau à valider, texte arabe, scan groupé, illisible
 - Autres/ : ce qui ne rentre nulle part
-- Jamais de CIN ni de RIB dans les champs extraits.
+- Données sensibles EXTRAITES quand elles sont présentes : cin, rib, iban, date_naissance,
+  adresse (voir architecture, point 2). Jamais affichées par les scripts.
 - Français uniquement (arabe en v2 -> A_Valider/). Un fichier = un document.
 - Volume : 20-30 documents/jour.
 
@@ -94,19 +127,20 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   (Get-Content, cat...). Claude ne doit donc jamais utiliser le shell pour lire ces dossiers.
 
 ## Questions encore ouvertes (à poser avant l'étape concernée)
-- B : diplômes hors DEUG/Licence/Master/Doctorat (Bac, BTS, DUT...) -> Diplomes/Autres/ ?
-- C : la copie du PDF original dans Folder_Sortie garde le CIN/RIB visibles
-  (seuls .txt/.json sont masqués). Acceptable pour le MVP ?
+- B : RÉSOLUE (2026-09-25) : Diplomes/ a un sous-dossier Autres/ (Bac, BTS, DUT...).
+- C : SANS OBJET (2026-09-25) : plus de masquage dans les sorties (architecture, point 2).
+- D : RÉSOLUE : champs Banque/ = banque, titulaire, periode, objet, rib, iban.
+- E : RÉSOLUE : mots-clés par catégorie dans le registre (architecture, point 9).
+- F : RÉSOLUE : registre dans config/categories.json (lisible, versionné) ;
+  data/ reste interdit en lecture (logs, sorties).
+- G : RÉSOLUE : l'agent ne plante jamais (architecture, point 1).
+- Aucune question ouverte à ce jour.
 
 ## Prochaines étapes (une à la fois)
 0. FAIT : lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.
-a) Jeu de test : l'utilisateur dépose des documents d'exemple dans tests/docs_test/
-   (pas forcément tous les types).
-b) Claude crée tests/docs_test/attendus.csv : liste des noms de fichiers + colonne
-   type_attendu VIDE, que l'utilisateur remplit lui-même.
-c) Script d'inventaire tests/inventaire_docs_test.py : noms, formats, pages, natif ou scan,
-   sans jamais afficher le contenu.
-d) Ensuite seulement : découpage en modules : src/config.py, src/schemas.py, src/masking.py,
+a) Inventaire du jeu de test : script tests/inventaire_docs_test.py (noms, formats, pages,
+   natif ou scan), sans jamais afficher le contenu.
+b) Ensuite seulement : découpage en modules : src/config.py, src/schemas.py, src/masking.py,
    src/normalize.py, src/filer.py, src/extract_text.py, src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).
