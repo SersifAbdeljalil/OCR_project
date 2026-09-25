@@ -160,9 +160,28 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     mots connus du registre dans le nom de fichier (+ n° de doublon _1, _2) ; tout le
     reste devient *** (ex. C:/***/Folder_Entree/***.pdf).
   - `tests/test_masking.py` : 31 tests (89 au total).
+  - Correction : tout ce qui suit CIN / C.I.N / CNIE / carte nationale (casse ignorée,
+    avec ou sans « : » / « n° ») est toujours masqué ; le mot-clé reste visible.
   - Limite : un nom de personne dans un champ non sensible (titulaire, fournisseur,
     beneficiaire, personne...) n'est PAS masqué par resume_champs (aucune regex ne
     reconnaît un nom). Question ouverte H.
+- FAIT (étape b3) : `src/normalize.py`, Python pur sans LLM. Chaque fonction renvoie
+  (valeur, alertes) ; les alertes ne recopient jamais la valeur analysée.
+  - `normaliser_date` -> 'AAAA-MM-JJ' ou None. Formats : 15/09/2026, 15-09-2026,
+    15.09.2026, 2026-09-15, 15 septembre 2026, 15 sept. 2026, 1er octobre 2026,
+    15/09/26. Toujours jour/mois. Année sur 2 chiffres : 20xx sauf si > année courante + 1
+    (alors 19xx), avec alerte. Date impossible, plusieurs dates, année < 1900 -> None.
+  - `normaliser_montant` -> Decimal ou None. Devise (DH, MAD, Dhs, €...) retirée seulement
+    au début ou à la fin ; espace permis seulement comme séparateur de milliers ;
+    avec virgule ET point, le dernier est le décimal ; un séparateur unique suivi
+    d'exactement 3 chiffres (1.234 / 1,234) est AMBIGU -> None.
+  - `verifier_totaux(ht, tva, ttc)` -> (ControleTotaux(ok, ecart, necessite_validation_humaine),
+    alertes). TVA : un montant ou une liste (additionnée). Tolérance 0,01. Écart -> alerte +
+    validation humaine. Montant manquant/illisible -> ok=False + alerte, SANS imposer
+    la validation.
+  - `tests/test_normalize.py` : 63 tests (164 au total).
+  - À prévoir : les montants sont des Decimal ; il faudra les convertir pour le JSON
+    (schemas.py accepte str / int / float).
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -188,6 +207,7 @@ a) FAIT : Inventaire du jeu de test : script tests/inventaire_docs_test.py (noms
 b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son test :
    b1) FAIT : config/categories.json + src/config.py + src/schemas.py.
    b2) FAIT : src/masking.py.
+   b3) FAIT : src/normalize.py.
    Suite :
    src/normalize.py, src/filer.py, src/extract_text.py, src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
