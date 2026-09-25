@@ -148,6 +148,21 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     pas de mots-clés (choix par défaut). `choisir_sous_dossier(categorie, texte)` dans
     src/config.py, SANS LLM : exactement un reconnu -> ce sous-dossier ; aucun ou
     plusieurs -> Autres ; catégorie sans sous-dossiers -> None. 58 tests OK.
+- FAIT (étape b2) : `src/masking.py`, pour l'AFFICHAGE uniquement (sorties jamais masquées).
+  Principe : masquer trop plutôt que pas assez.
+  - `masquer_texte` : email, IBAN (MA + chiffres), téléphone (05/06/07, +212, 00212),
+    RIB (24 chiffres, espaces permis), 8 chiffres ou plus, CIN (1-2 lettres + 5 chiffres
+    ou plus ; avec espace seulement en majuscules, pour ne pas masquer « de 15000 »).
+    Les dates (15/09/2026, 2026-09-25) et montants (1 000,00 DH) restent lisibles.
+  - `resume_champs` : champs sensibles du registre -> « trouvé » / « absent » ; autres
+    champs -> masquer_texte (vide -> « absent »).
+  - `nom_affichable` : garde les dossiers connus (registre + dossiers techniques) et les
+    mots connus du registre dans le nom de fichier (+ n° de doublon _1, _2) ; tout le
+    reste devient *** (ex. C:/***/Folder_Entree/***.pdf).
+  - `tests/test_masking.py` : 31 tests (89 au total).
+  - Limite : un nom de personne dans un champ non sensible (titulaire, fournisseur,
+    beneficiaire, personne...) n'est PAS masqué par resume_champs (aucune regex ne
+    reconnaît un nom). Question ouverte H.
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -162,7 +177,9 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 - F : RÉSOLUE : registre dans config/categories.json (lisible, versionné) ;
   data/ reste interdit en lecture (logs, sorties).
 - G : RÉSOLUE : l'agent ne plante jamais (architecture, point 1).
-- Aucune question ouverte à ce jour.
+- H : resume_champs affiche en clair les champs non sensibles qui contiennent des noms
+  de personnes (titulaire, beneficiaire, personne, parties...). Faut-il les traiter comme
+  sensibles à l'affichage (« trouvé / absent ») ?
 
 ## Prochaines étapes (une à la fois)
 0. FAIT : lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.
@@ -170,7 +187,8 @@ a) FAIT : Inventaire du jeu de test : script tests/inventaire_docs_test.py (noms
    natif ou scan), sans jamais afficher le contenu.
 b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son test :
    b1) FAIT : config/categories.json + src/config.py + src/schemas.py.
-   Suite : src/masking.py,
+   b2) FAIT : src/masking.py.
+   Suite :
    src/normalize.py, src/filer.py, src/extract_text.py, src/ocr_worker.py,
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).
