@@ -150,6 +150,31 @@ def test_resume_champs():
         assert secret not in tout
 
 
+def test_resume_champs_personnes_jamais_affichees():
+    champs = {"titulaire": "Prenom Nom", "beneficiaire": "Autre Personne",
+              "personne": "", "parties": "Societe A et Monsieur B"}
+    r = resume_champs(champs, REGISTRE)
+    assert r == {"titulaire": "trouvé", "beneficiaire": "trouvé",
+                 "personne": "absent", "parties": "trouvé"}
+
+
+def test_resume_champs_organismes_affiches_et_masques():
+    champs = {"fournisseur": "Societe Exemple", "banque": "Banque Exemple",
+              "etablissement": "Faculte Exemple", "emetteur": "Societe Exemple, tel 0612345678",
+              "organisme": "Caisse Exemple"}
+    r = resume_champs(champs, REGISTRE)
+    assert r["fournisseur"] == "Societe Exemple"
+    assert r["banque"] == "Banque Exemple"
+    assert r["etablissement"] == "Faculte Exemple"
+    assert r["organisme"] == "Caisse Exemple"
+    assert "0612345678" not in r["emetteur"] and MASQUE in r["emetteur"]
+
+
+def test_resume_champs_montant_decimal():
+    from decimal import Decimal
+    assert resume_champs({"montant_ttc": Decimal("240.50")}, REGISTRE)["montant_ttc"] == "240.50"
+
+
 # --- 4. Nom de fichier affichable ------------------------------------------
 @pytest.mark.parametrize("chemin, attendu", [
     ("Folder_Sortie/Diplomes/DEUG/diplome_deug_nom_prenom.json",

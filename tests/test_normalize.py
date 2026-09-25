@@ -164,13 +164,34 @@ def test_totaux_ecart_impose_validation():
     assert controle.ecart == Decimal("-50")
 
 
-def test_totaux_montant_manquant():
-    controle, alertes = verifier_totaux(None, "200", "1200")
+@pytest.mark.parametrize("ht, ttc", [(None, "1200"), ("1000", None), ("", "1200")])
+def test_totaux_ht_ou_ttc_manquant_impose_validation(ht, ttc):
+    controle, alertes = verifier_totaux(ht, "200", ttc)
     assert not controle.ok and controle.ecart is None
-    assert any("verification impossible" in a for a in alertes)
+    assert controle.necessite_validation_humaine
+    assert any("HT ou TTC manquant" in a for a in alertes)
 
 
 def test_totaux_montant_ambigu_signale_le_champ():
     controle, alertes = verifier_totaux("1.000", "200", "1200")
-    assert not controle.ok
+    assert not controle.ok and controle.necessite_validation_humaine
     assert any(a.startswith("montant_ht : ambigu") for a in alertes)
+
+
+@pytest.mark.parametrize("tva", [None, "", [], [None, ""]])
+def test_totaux_sans_tva_ht_egal_ttc(tva):
+    controle, alertes = verifier_totaux("500,00", tva, "500,00 DH")
+    assert controle.ok and not controle.necessite_validation_humaine
+    assert alertes == ["totaux : facture sans TVA"]
+
+
+def test_totaux_sans_tva_ht_different_ttc():
+    controle, alertes = verifier_totaux("1000", None, "1200")
+    assert not controle.ok and controle.necessite_validation_humaine
+    assert any("TVA manquante" in a for a in alertes)
+
+
+def test_totaux_ligne_tva_illisible():
+    controle, alertes = verifier_totaux("1000", ["200", "1.234"], "1200")
+    assert not controle.ok and controle.necessite_validation_humaine
+    assert any("ligne de TVA illisible" in a for a in alertes)

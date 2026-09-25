@@ -71,13 +71,21 @@ def masquer_texte(texte) -> str:
 
 
 # --- 2. Resume des champs extraits -----------------------------------------
+# Champs qui contiennent des noms de PERSONNES : aucune regex ne reconnait un nom,
+# donc on n'affiche jamais leur valeur (question H, decidee le 2026-09-25).
+# Les champs d'ORGANISMES (fournisseur, banque, etablissement, emetteur, organisme)
+# restent affiches, via masquer_texte.
+CHAMPS_PERSONNES = {"titulaire", "beneficiaire", "personne", "parties"}
+
+
 def resume_champs(champs: dict, registre: dict = None) -> dict:
     """Version affichable des champs d'un document :
-        - champ sensible du registre -> "trouvé" ou "absent" (jamais la valeur) ;
+        - champ sensible du registre ou champ de personne
+                                    -> "trouvé" ou "absent" (jamais la valeur) ;
         - autre champ               -> valeur passee dans masquer_texte,
                                        ou "absent" si elle est vide."""
     registre = registre or registre_par_defaut()
-    sensibles = set(registre["champs_sensibles"])
+    sensibles = set(registre["champs_sensibles"]) | CHAMPS_PERSONNES
     resume = {}
     for nom, valeur in champs.items():
         vide = valeur is None or (isinstance(valeur, str) and not valeur.strip())

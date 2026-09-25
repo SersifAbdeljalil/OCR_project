@@ -14,7 +14,9 @@ CONFIDENTIALITE : les messages d'erreur ne recopient jamais les valeurs
 """
 
 # --- Imports ---------------------------------------------------------------
+import json
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional, Union
 
 from pydantic import (BaseModel, ConfigDict, Field, ValidationInfo,
@@ -23,8 +25,25 @@ from pydantic import (BaseModel, ConfigDict, Field, ValidationInfo,
 from src.config import (MOTIF_NOM, SEUIL_CONFIANCE, champs_attendus,
                         registre_par_defaut)
 
-# Une valeur extraite : texte, nombre (montants) ou None (absente du document)
-Valeur = Optional[Union[str, int, float]]
+# Une valeur extraite : texte, nombre, montant exact (Decimal, venant de
+# normalize.py) ou None (absente du document)
+Valeur = Optional[Union[str, int, float, Decimal]]
+CENTIME = Decimal("0.01")
+
+
+def _vers_json(valeur, indent: int, niveau: int = 0) -> str:
+    """Encode en JSON comme json.dumps, SAUF les Decimal, ecrits comme
+    nombres a 2 decimales (240.50 et non "240.50" ni 240.5)."""
+    if isinstance(valeur, Decimal):
+        return str(valeur.quantize(CENTIME, rounding=ROUND_HALF_UP))
+    if isinstance(valeur, dict):
+        if not valeur:
+            return "{}"
+        marge, marge_fin = " " * indent * (niveau + 1), " " * indent * niveau
+        lignes = [f"{marge}{json.dumps(str(cle), ensure_ascii=False)}: "
+                  f"{_vers_json(v, indent, niveau + 1)}" for cle, v in valeur.items()]
+        return "{\n" + ",\n".join(lignes) + "\n" + marge_fin + "}"
+    return json.dumps(valeur, ensure_ascii=False)   # texte, nombre, booleen, None
 
 
 class DocumentSortie(BaseModel):
@@ -74,3 +93,11 @@ class DocumentSortie(BaseModel):
             raise ValueError(f"confiance < {SEUIL_CONFIANCE} : "
                              "necessite_validation_humaine doit valoir true")
         return self
+
+    # --- Ecriture du fichier .json ---
+    def vers_json(self, indent: int = 2) -> str:
+        """Texte JSON du document (UTF-8, accents lisibles). Les montants Decimal
+        sont ecrits comme nombres a 2 decimales : 240.50."""
+        donnees = self.model_dump(mode="json")   # date -> texte ISO, etc.
+        donnees["champs"] = self.champs          # garde les Decimal intacts
+        return _vers_json(donnees, indent)

@@ -6,6 +6,7 @@ Toutes les valeurs sont INVENTEES.
 """
 
 import json
+from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
@@ -68,6 +69,34 @@ def test_categorie_decouverte_champs_generiques():
 def test_banque():
     doc = valider(document(type="banque", champs={"banque": "Banque Exemple"}))
     assert set(doc.champs) >= {"banque", "titulaire", "periode", "objet", "rib", "iban"}
+
+
+def test_decimal_accepte_et_garde_intact():
+    doc = valider(document(champs={"montant_ht": Decimal("200.4"),
+                                   "montant_ttc": Decimal("240.5")}))
+    assert isinstance(doc.champs["montant_ttc"], Decimal)
+
+
+def test_vers_json_montants_a_deux_decimales():
+    doc = valider(document(champs={"montant_ht": Decimal("200.4"),
+                                   "tva": Decimal("40.1"),
+                                   "montant_ttc": Decimal("240.5"),
+                                   "fournisseur": "Société Exemple"}))
+    texte = doc.vers_json()
+    assert '"montant_ttc": 240.50' in texte          # nombre, pas texte
+    assert '"montant_ht": 200.40' in texte
+    assert "Société Exemple" in texte                # accents lisibles
+    relu = json.loads(texte)                         # JSON valide
+    assert relu["champs"]["montant_ttc"] == 240.5
+    assert relu["champs"]["numero"] is None
+    assert set(relu) == {"type", "source", "date_traitement",
+                         "confiance_classification", "champs",
+                         "necessite_validation_humaine", "texte_brut"}
+
+
+def test_vers_json_arrondi_au_centime():
+    doc = valider(document(champs={"montant_ttc": Decimal("10.005")}))
+    assert '"montant_ttc": 10.01' in doc.vers_json()
 
 
 # --- 2. Cas refuses --------------------------------------------------------

@@ -162,9 +162,10 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   - `tests/test_masking.py` : 31 tests (89 au total).
   - Correction : tout ce qui suit CIN / C.I.N / CNIE / carte nationale (casse ignorée,
     avec ou sans « : » / « n° ») est toujours masqué ; le mot-clé reste visible.
-  - Limite : un nom de personne dans un champ non sensible (titulaire, fournisseur,
-    beneficiaire, personne...) n'est PAS masqué par resume_champs (aucune regex ne
-    reconnaît un nom). Question ouverte H.
+  - Question H résolue : champs de PERSONNES (titulaire, beneficiaire, personne, parties)
+    -> seulement « trouvé » / « absent » (CHAMPS_PERSONNES dans masking.py). Champs
+    d'ORGANISMES (fournisseur, banque, etablissement, emetteur, organisme) -> affichés
+    via masquer_texte.
 - FAIT (étape b3) : `src/normalize.py`, Python pur sans LLM. Chaque fonction renvoie
   (valeur, alertes) ; les alertes ne recopient jamais la valeur analysée.
   - `normaliser_date` -> 'AAAA-MM-JJ' ou None. Formats : 15/09/2026, 15-09-2026,
@@ -177,11 +178,13 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     d'exactement 3 chiffres (1.234 / 1,234) est AMBIGU -> None.
   - `verifier_totaux(ht, tva, ttc)` -> (ControleTotaux(ok, ecart, necessite_validation_humaine),
     alertes). TVA : un montant ou une liste (additionnée). Tolérance 0,01. Écart -> alerte +
-    validation humaine. Montant manquant/illisible -> ok=False + alerte, SANS imposer
-    la validation.
-  - `tests/test_normalize.py` : 63 tests (164 au total).
-  - À prévoir : les montants sont des Decimal ; il faudra les convertir pour le JSON
-    (schemas.py accepte str / int / float).
+    validation humaine. Montants manquants (décision du 2026-09-25) : HT ou TTC manquant
+    ou illisible -> validation humaine ; TVA manquante et HT = TTC -> ok + alerte
+    « facture sans TVA » ; TVA manquante et HT différent du TTC -> validation humaine ;
+    ligne de TVA illisible -> validation humaine.
+  - `tests/test_normalize.py` : 63 tests à l'origine.
+  - Decimal : schemas.py accepte Decimal ; `DocumentSortie.vers_json()` écrit les montants
+    comme NOMBRES à 2 décimales (240.50), arrondi au centime supérieur à partir de 0,005.
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -196,9 +199,7 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
 - F : RÉSOLUE : registre dans config/categories.json (lisible, versionné) ;
   data/ reste interdit en lecture (logs, sorties).
 - G : RÉSOLUE : l'agent ne plante jamais (architecture, point 1).
-- H : resume_champs affiche en clair les champs non sensibles qui contiennent des noms
-  de personnes (titulaire, beneficiaire, personne, parties...). Faut-il les traiter comme
-  sensibles à l'affichage (« trouvé / absent ») ?
+- H : RÉSOLUE : champs de personnes -> « trouvé / absent » à l'affichage.
 
 ## Prochaines étapes (une à la fois)
 0. FAIT : lancer `python test_classification.py` puis `--forcer-llm` ; analyser temps et erreurs.

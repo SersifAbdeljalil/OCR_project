@@ -188,23 +188,41 @@ def _en_montant(valeur, nom: str, alertes: list):
     return montant
 
 
+def _est_vide(valeur) -> bool:
+    return valeur is None or (isinstance(valeur, str) and not valeur.strip())
+
+
 def verifier_totaux(ht, tva, ttc):
     """Renvoie (ControleTotaux, alertes).
     `tva` peut etre un seul montant ou une liste (plusieurs taux : on additionne).
     Un ecart ne bloque rien : il ajoute une alerte et impose la validation humaine.
-    Un montant manquant ou illisible : verification impossible, alerte seulement."""
+    Regles pour les montants manquants :
+        - HT ou TTC manquant (ou illisible)      -> validation humaine ;
+        - TVA manquante et HT = TTC              -> ok, alerte « facture sans TVA » ;
+        - TVA manquante et HT different du TTC   -> validation humaine ;
+        - ligne de TVA presente mais illisible   -> validation humaine."""
     alertes = []
-    lignes_tva = tva if isinstance(tva, (list, tuple)) else [tva]
     m_ht = _en_montant(ht, "montant_ht", alertes)
     m_ttc = _en_montant(ttc, "montant_ttc", alertes)
+    if m_ht is None or m_ttc is None:
+        alertes.append("totaux : verification impossible (HT ou TTC manquant ou illisible)")
+        return ControleTotaux(ok=False, necessite_validation_humaine=True), alertes
+
+    # TVA : on ne garde que les lignes renseignees
+    lignes_tva = list(tva) if isinstance(tva, (list, tuple)) else [tva]
+    lignes_tva = [v for v in lignes_tva if not _est_vide(v)]
     m_tva = [_en_montant(v, "tva", alertes) for v in lignes_tva]
+    if any(v is None for v in m_tva):
+        alertes.append("totaux : verification impossible (ligne de TVA illisible)")
+        return ControleTotaux(ok=False, necessite_validation_humaine=True), alertes
 
-    if m_ht is None or m_ttc is None or not m_tva or any(v is None for v in m_tva):
-        alertes.append("totaux : verification impossible (montant manquant ou illisible)")
-        return ControleTotaux(ok=False), alertes
-
-    ecart = m_ht + sum(m_tva) - m_ttc
+    ecart = m_ht + sum(m_tva) - m_ttc          # sum([]) = 0 si aucune TVA
     if abs(ecart) <= TOLERANCE:
+        if not m_tva:
+            alertes.append("totaux : facture sans TVA")
         return ControleTotaux(ok=True, ecart=ecart), alertes
-    alertes.append(f"totaux : HT + TVA different du TTC (ecart de {ecart:.2f})")
+    if not m_tva:
+        alertes.append(f"totaux : TVA manquante et HT different du TTC (ecart de {ecart:.2f})")
+    else:
+        alertes.append(f"totaux : HT + TVA different du TTC (ecart de {ecart:.2f})")
     return ControleTotaux(ok=False, ecart=ecart, necessite_validation_humaine=True), alertes
