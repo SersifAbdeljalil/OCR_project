@@ -96,6 +96,20 @@ def test_sous_dossier_corps_si_titre_muet(registre):
     assert choisir_sous_dossier(diplomes, f"UNIVERSITÉ EXEMPLE\n{corps}\nDEUG") == "DEUG"
 
 
+@pytest.mark.parametrize("titre, attendu", [
+    ("Diplôme d'Études Universitaires Générales", "DEUG"),          # sans le sigle
+    ("DIPLOME D’ETUDES UNIVERSITAIRES GENERALES", "DEUG"),          # apostrophe typographique
+    ("Licence Fondamentale en Économie", "Licence"),
+    ("Licence Professionnelle Comptabilité", "Licence"),
+    ("Licence d'Études Fondamentales", "Licence"),
+    ("Master Spécialisé Audit", "Master"),
+    ("Master de Recherche en Finance", "Master"),
+])
+def test_sous_dossier_noms_complets(registre, titre, attendu):
+    diplomes = trouver_categorie(registre, "diplomes")
+    assert choisir_sous_dossier(diplomes, titre) == attendu
+
+
 def test_sous_dossier_plusieurs_dans_le_titre(registre):
     diplomes = trouver_categorie(registre, "diplomes")
     assert choisir_sous_dossier(diplomes, "Licence et Master\nDEUG") == "Autres"

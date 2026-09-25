@@ -21,9 +21,18 @@
       "nom": "diplomes",
       "dossier": "Diplomes",
       "sous_dossiers": [
-        {"nom": "DEUG", "mots_cles": ["\\bdeug\\b"]},
-        {"nom": "Licence", "mots_cles": ["\\blicence\\b"]},
-        {"nom": "Master", "mots_cles": ["\\bmaster\\b"]},
+        {"nom": "DEUG", "mots_cles": [
+          "\\bdeug\\b",
+          "\\bdiplome d.etudes universitaires generales\\b"]},
+        {"nom": "Licence", "mots_cles": [
+          "\\blicence\\b",
+          "\\blicence fondamentale\\b",
+          "\\blicence professionnelle\\b",
+          "\\blicence d.etudes fondamentales\\b"]},
+        {"nom": "Master", "mots_cles": [
+          "\\bmaster\\b",
+          "\\bmaster specialise\\b",
+          "\\bmaster de recherche\\b"]},
         {"nom": "Doctorat", "mots_cles": ["\\bdoctorat\\b"]},
         {"nom": "Autres", "mots_cles": []}
       ],
