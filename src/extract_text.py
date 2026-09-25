@@ -53,6 +53,9 @@ class ResultatExtraction:
     nb_pages: int = 0                  # pages (PDF, image) ou feuilles (Excel), 1 pour Word
     pages_ocr: list = field(default_factory=list)       # numeros de pages (a partir de 1)
     statut_pages: list = field(default_factory=list)    # "texte" / "OCR requis" par page
+    # Texte natif page par page (PDF, images : "" pour une page a OCR) ; vide pour
+    # Word / Excel (pas de pages). Sert a fusionner le texte OCR dans l'ordre.
+    textes_pages: list = field(default_factory=list)
     methode: str = "aucune"
     illisible: bool = False
     alertes: list = field(default_factory=list)
@@ -85,9 +88,11 @@ def extraire_pdf(chemin: Path) -> ResultatExtraction:
                 if _nb_caracteres_visibles(texte) >= SEUIL_CARACTERES_PAGE:
                     r.statut_pages.append(STATUT_TEXTE)
                     textes.append(texte.strip())
+                    r.textes_pages.append(texte.strip())
                 else:
                     r.statut_pages.append(STATUT_OCR)
                     r.pages_ocr.append(numero)
+                    r.textes_pages.append("")
     except Exception as err:
         return _illisible(r, f"fichier corrompu ou invalide ({type(err).__name__})")
     r.texte = SEPARATEUR_PAGES.join(textes)
@@ -112,6 +117,7 @@ def extraire_image(chemin: Path) -> ResultatExtraction:
         return _illisible(r, "image vide")
     r.pages_ocr = list(range(1, r.nb_pages + 1))
     r.statut_pages = [STATUT_OCR] * r.nb_pages
+    r.textes_pages = [""] * r.nb_pages
     return r
 
 

@@ -25,6 +25,7 @@ CHEMIN_REGISTRE = RACINE / "config" / "categories.json"
 DOSSIER_ENTREE = RACINE / "Folder_Entree"   # documents a traiter
 DOSSIER_SORTIE = RACINE / "Folder_Sortie"   # documents ranges
 DOSSIER_TRAITES = "Traites"                 # sous-dossier de Folder_Entree
+DOSSIER_DATA = RACINE / "data"              # resultats intermediaires (interdit en lecture a Claude)
 
 SEUIL_CONFIANCE = 0.90          # >= 0.90 -> rangement automatique (regle A)
 SEUIL_CARACTERES_PAGE = 50      # page PDF avec moins de caracteres visibles -> OCR requis

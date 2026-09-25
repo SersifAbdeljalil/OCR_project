@@ -262,6 +262,38 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   - Avertissement paddle « OMP_NUM_THREADS set to 2, not 1 » sans conséquence (build MKL,
     pas OpenBlas) : l'OCR fonctionne.
   - Plan B si problème plus tard : RapidOCR (mêmes modèles, onnxruntime). PAS PaddleOCR 3.x.
+- FAIT (étape b6b) : `src/ocr_worker.py`.
+  - PARENT `lancer_ocr(taches)` : taches = [{"fichier", "page"}] (via
+    `taches_depuis_extraction(chemin, extraction)`). Lance `python -m src.ocr_worker` dans
+    un SOUS-PROCESS (RAM rendue à Windows à la fin), UN lot = modèle chargé une fois.
+    Surveille l'avancement ligne par ligne (JSONL) : page > 60 s ou worker planté -> page
+    en erreur + alerte « page N abandonnee : ... », worker relancé pour les pages
+    suivantes ; chargement > 180 s -> toutes les pages en erreur « OCR impossible ».
+  - WORKER : PDF rendu à 200 dpi (PyMuPDF), image lue telle quelle (dpi=None), via
+    PyMuPDF (OpenCV plante sur les chemins accentués) ; lang="fr", CPU, 2 threads,
+    use_angle_cls=True. Une page qui plante -> statut « erreur » + type d'erreur, page suivante.
+  - Par ligne : texte, confiance, cadre (4 points en pixels de l'image analysée) ; par page :
+    largeur, hauteur, dpi, durée, pic RAM, orientation.
+  - À GARDER pour la future règle de validation des champs : la CONFIANCE PAR LIGNE
+    (et le cadre pour l'écran Streamlit).
+  - Page À L'ENVERS : PaddleOCR retourne chaque ligne mais les rend dans l'ordre inverse.
+    Correctif : `_EspionAngles` enveloppe l'attribut interne `text_classifier` (PaddleOCR
+    2.10) pour lire l'angle de chaque ligne ; majorité à 180° -> orientation=180 et lignes
+    remises dans l'ordre de lecture. Dépend d'un attribut interne : à revérifier si on
+    change de version.
+  - `fusionner_texte(extraction, pages_ocr)` : texte natif + texte OCR dans l'ordre des
+    pages (extract_text.py garde maintenant `textes_pages`) ; page OCR ratée -> alerte.
+  - Résultats intermédiaires : data/ocr/<horodatage>/ (taches, resultats JSONL, journal
+    du worker), jamais affichés, jamais lus par Claude. Pas encore de nettoyage automatique.
+  - `tests/test_ocr_worker.py` : 18 tests (263 au total, ~24 s) : page droite, penchée
+    5°, à l'envers, vide, image corrompue, PDF mixte + fusion, délai dépassé, chargement
+    trop long.
+  - `tests/verifier_ocr.py` sur le jeu de test (12 pages, Ollama sans modèle chargé) :
+    0 erreur, chargement 5,6 s, lot 51,2 s (0,9 à 7,4 s par page), 392 lignes,
+    confiance moyenne 0,870, 137 lignes sous 0,90, pic RAM du worker 1582 Mo (< 2 Go,
+    mais bien plus que les 641 Mo de l'essai : vrais scans plus grands).
+    Confiance faible sur bac-1-1, bac-2-1, bac (0,72 à 0,80) et demand eljadida (0,756) ;
+    cause non vérifiable sans lire le contenu (hypothèse : texte arabe ou tampons).
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -289,6 +321,7 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b4) FAIT : src/filer.py.
    b5) FAIT : src/extract_text.py (sans OCR).
    b6a) FAIT : faisabilité PaddleOCR (tests/essai_ocr.py) + requirements.txt.
-   Suite : src/ocr_worker.py,
+   b6b) FAIT : src/ocr_worker.py.
+   Suite :
    src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).
