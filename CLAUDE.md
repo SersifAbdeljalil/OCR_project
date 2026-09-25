@@ -284,7 +284,11 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
   - `fusionner_texte(extraction, pages_ocr)` : texte natif + texte OCR dans l'ordre des
     pages (extract_text.py garde maintenant `textes_pages`) ; page OCR ratée -> alerte.
   - Résultats intermédiaires : data/ocr/<horodatage>/ (taches, resultats JSONL, journal
-    du worker), jamais affichés, jamais lus par Claude. Pas encore de nettoyage automatique.
+    du worker), jamais affichés, jamais lus par Claude.
+  - DÉCISION data/ocr/ (2026-09-25, à appliquer dans pipeline.py) : résultat OCR supprimé
+    dès que le document est rangé ; pour A_Valider/, les lignes OCR (texte, confiance,
+    cadre) sont copiées dans son .json puis supprimées ; au lancement, tout ce qui a plus
+    de 7 jours dans data/ocr/ est supprimé.
   - `tests/test_ocr_worker.py` : 18 tests (263 au total, ~24 s) : page droite, penchée
     5°, à l'envers, vide, image corrompue, PDF mixte + fusion, délai dépassé, chargement
     trop long.
@@ -294,6 +298,36 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     mais bien plus que les 641 Mo de l'essai : vrais scans plus grands).
     Confiance faible sur bac-1-1, bac-2-1, bac (0,72 à 0,80) et demand eljadida (0,756) ;
     cause non vérifiable sans lire le contenu (hypothèse : texte arabe ou tampons).
+- FAIT (étape b7) : `src/rules.py` (déterministe, sans LLM, TOUT vient du registre).
+  - `analyser(texte, texte_natif=, confiances_ocr=)` -> VerdictRegles(categorie, verdict,
+    scores, regle_metier, sous_dossier, signaux). Verdicts : « regle metier » (prioritaire),
+    « net » (>= 2 indices, un seul type), « faible », « egalite », « aucun indice ».
+    VERDICTS_SURS = net + regle metier (0.95 dans la règle A).
+  - Signaux de qualité renvoyés SANS décider (classifier.py appliquera la règle A) :
+    part_arabe (lettres arabes / lettres, texte NATIF), lignes_ocr, confiance_ocr_moyenne,
+    lignes_ocr_sous_seuil (SEUIL_CONFIANCE_LIGNE_OCR = 0,90 dans config.py).
+  - Mots-clés NON modifiés pour tolérer l'OCR (décision reportée après résultats réels).
+  - `tests/test_rules.py` : 33 tests (296 au total) : les 6 documents de
+    test_classification.py (mêmes scores), un cas par catégorie (banque compris),
+    faible / égalité, règles lues dans le registre, signaux.
+  - `tests/verifier_rules.py` sur le jeu de test (17 fichiers) : net 2, règle métier 1,
+    faible 8, égalité 2, aucun indice 4. Donc seulement 3/17 rangés sans LLM.
+    Constats (métriques et noms de fichiers seulement) :
+    * les 4 modèles de facture (pdf, 2 xls, dotx) : factures 3-4 MAIS banque:1 -> « faible »
+      (un mot-clé banque — rib, iban, agence ou solde — apparaît sur les factures) ;
+    * « damand a monsieur le doyen.pdf » -> diplomes « net » (0.95 sans LLM) alors que le
+      nom évoque une demande et non un diplôme : RISQUE de mauvais rangement automatique ;
+    * deug.pdf -> diplomes par règle métier, mais sous-dossier Autres (aucun ou plusieurs
+      mots-clés de sous-dossier trouvés) ;
+    * « RIB CDG.pdf » -> attestations:2 banque:1 -> attestations « faible » ;
+    * bac, bac-1-1 : égalité diplomes 2 / attestations 2 ; bac-2-1 : aucun indice
+      (confiance OCR 0,72) ;
+    * CV (3 fichiers) -> diplomes « faible » (une mention de diplôme dans un CV) ;
+    * « contrat de travail » -> attestations:1 via le mot-clé « de travail » : jamais « net »
+      (faiblesse connue du registre, testée) ;
+    * part_arabe = 0 % partout : le signal ne voit que le texte NATIF ; sur un scan, le
+      modèle OCR latin ne produit pas de lettres arabes -> la confiance OCR basse est le
+      seul indice pour les scans bilingues.
   - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
     PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
@@ -322,6 +356,6 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b5) FAIT : src/extract_text.py (sans OCR).
    b6a) FAIT : faisabilité PaddleOCR (tests/essai_ocr.py) + requirements.txt.
    b6b) FAIT : src/ocr_worker.py.
-   Suite :
-   src/rules.py, src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
+   b7) FAIT : src/rules.py.
+   Suite : src/llm.py, src/classifier.py, src/extractor.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).

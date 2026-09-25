@@ -29,6 +29,7 @@ DOSSIER_DATA = RACINE / "data"              # resultats intermediaires (interdit
 
 SEUIL_CONFIANCE = 0.90          # >= 0.90 -> rangement automatique (regle A)
 SEUIL_CARACTERES_PAGE = 50      # page PDF avec moins de caracteres visibles -> OCR requis
+SEUIL_CONFIANCE_LIGNE_OCR = 0.90   # ligne OCR "douteuse" en dessous (signal de qualite)
 DOSSIER_A_VALIDER = "A_Valider"  # dossiers speciaux, hors registre
 DOSSIER_AUTRES = "Autres"
 NOMS_RESERVES = {"a_valider", "autres"}   # interdits comme nom de categorie
