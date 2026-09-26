@@ -361,8 +361,13 @@ class FausseSession:
         self.posts.append(json)
         if self.panne:
             raise self.panne
-        return FausseReponse({"response": self.reponse if isinstance(self.reponse, str)
-                              else __import__("json").dumps(self.reponse)})
+        if isinstance(self.reponse, str):
+            return FausseReponse({"response": self.reponse})
+        # Comme Ollama avec un schema : toutes les cles demandees sont presentes
+        # (null si le test ne donne pas de valeur)
+        complete = {cle: None for cle in json["format"]["properties"]}
+        complete.update(self.reponse)
+        return FausseReponse({"response": __import__("json").dumps(complete)})
 
 
 def client_simule(reponse, panne=None):
@@ -377,7 +382,7 @@ def test_llm_ne_remplit_que_les_champs_libres():
     assert r.champs["fournisseur"].methode == "llm"
     assert r.champs["montant_ttc"].methode == "regex"
     schema = client.session.posts[0]["format"]
-    assert set(schema["properties"]) == {"fournisseur"}          # facture : un seul champ libre
+    assert set(schema["properties"]) == {"fournisseur", "adresse"}   # facture : champs libres
     assert "- fournisseur : nom de l'entreprise" in client.session.posts[0]["prompt"]
 
 
@@ -388,7 +393,7 @@ def test_champs_libres_selon_la_categorie():
              "Fait à Rabat, le 12 juillet 2020")
     r = extraire_document(natif(texte), "diplomes", client, REGISTRE, CONFIG)
     assert set(client.session.posts[0]["format"]["properties"]) == \
-        {"titulaire", "intitule", "etablissement", "mention"}
+        {"titulaire", "intitule", "etablissement", "mention", "adresse"}
     assert r.valeurs()["titulaire"] == "Prénom Nom"
     assert r.valeurs()["date_obtention"] == "2020-07-12"          # regex
 
@@ -459,9 +464,89 @@ def test_categorie_decouverte_champs_generiques_llm():
     texte = "Bulletin de paie\nSociété Exemple\nSalarié : Prénom Nom\nDate : 30/09/2026"
     r = extraire_document(natif(texte), "bulletin_paie", client, REGISTRE, CONFIG)
     assert set(client.session.posts[0]["format"]["properties"]) == {"titre", "personne",
-                                                                     "organisme"}
+                                                                     "organisme", "adresse"}
     assert r.valeurs() == {"date": "2026-09-30", "titre": "Bulletin de paie",
                            "personne": "Prénom Nom", "organisme": "Société Exemple"}
+
+
+# --- 8 ter. Controles du fournisseur, duree / periode / adresse --------------------------
+FACTURE_AVEC_CLIENT = """Société Exemple SARL
+ICE : 001 234 567 000 089
+FACTURE
+N° : FA-2026-0007
+Client : Cabinet Fictif Destinataire, Casablanca
+Total TTC : 1 200,00 DH"""
+
+
+@pytest.mark.parametrize("ligne_client", [
+    "Client : Cabinet Fictif Destinataire, Casablanca",
+    "Destinataire : Cabinet Fictif Destinataire",
+    "Facturé à : Cabinet Fictif Destinataire",
+    "Doit : Cabinet Fictif Destinataire",
+    "À l'attention de Cabinet Fictif Destinataire",
+    "Adressé à Cabinet Fictif Destinataire",
+    "C1ient : Cabinet Fictif Destinataire",                  # etiquette mal lue par l'OCR
+])
+def test_fournisseur_sur_ligne_destinataire_rejete(ligne_client):
+    texte = FACTURE_AVEC_CLIENT.replace(
+        "Client : Cabinet Fictif Destinataire, Casablanca", ligne_client)
+    client = client_simule({"fournisseur": "Cabinet Fictif Destinataire"})
+    r = extraire_document(natif(texte), "factures", client, REGISTRE, CONFIG)
+    assert "fournisseur" not in r.champs
+    assert "fournisseur : valeur trouvee seulement sur une ligne de destinataire " \
+           "(client...), rejetee" in r.alertes
+    assert r.necessite_validation_humaine
+
+
+def test_fournisseur_sous_une_etiquette_seule_rejete():
+    texte = "Société Exemple SARL\nFACTURE\nFacturé à :\nCabinet Fictif Destinataire"
+    client = client_simule({"fournisseur": "Cabinet Fictif Destinataire"})
+    r = extraire_document(natif(texte), "factures", client, REGISTRE, CONFIG)
+    assert "fournisseur" not in r.champs
+
+
+def test_vrai_fournisseur_accepte_malgre_la_ligne_client():
+    client = client_simule({"fournisseur": "Société Exemple SARL"})
+    r = extraire_document(natif(FACTURE_AVEC_CLIENT), "factures", client, REGISTRE, CONFIG)
+    assert r.valeurs()["fournisseur"] == "Société Exemple SARL"
+    assert not any("destinataire" in a or "zone titre" in a for a in r.alertes)
+
+
+def test_nom_present_en_entete_et_sur_ligne_client_accepte():
+    """Une apparition hors ligne de destinataire suffit (ex. auto-facturation)."""
+    texte = "Société Exemple SARL\nFACTURE\nClient : Société Exemple SARL"
+    client = client_simule({"fournisseur": "Société Exemple SARL"})
+    r = extraire_document(natif(texte), "factures", client, REGISTRE, CONFIG)
+    assert "fournisseur" in r.champs and r.champs["fournisseur"].ligne == 0
+
+
+def test_fournisseur_hors_zone_titre_alerte_et_validation():
+    lignes = natif(FACTURE) + [LigneSource(f"ligne {i}") for i in range(20)] + \
+        [LigneSource("Émis par : Autre Société Fictive")]
+    client = client_simule({"fournisseur": "Autre Société Fictive"})
+    r = extraire_document(lignes, "factures", client, REGISTRE, CONFIG)
+    assert r.valeurs()["fournisseur"] == "Autre Société Fictive"      # garde, mais...
+    assert "fournisseur : valeur hors de la zone titre, a verifier" in r.alertes
+    assert r.necessite_validation_humaine
+
+
+@pytest.mark.parametrize("categorie, attendus", [
+    ("contrats", {"parties", "objet", "duree", "adresse"}),
+    ("banque", {"banque", "titulaire", "objet", "periode", "adresse"}),
+    ("attestations", {"emetteur", "beneficiaire", "objet", "adresse"}),
+])
+def test_duree_periode_adresse_demandes(categorie, attendus):
+    client = client_simule({})
+    extraire_champs_libres(natif("texte"), categorie, client, REGISTRE)
+    assert set(client.session.posts[0]["format"]["properties"]) == attendus
+
+
+def test_duree_et_adresse_anti_invention():
+    texte = "CONTRAT DE BAIL\nConclu pour une durée de douze mois\n12, rue Fictive, Rabat"
+    client = client_simule({"duree": "douze mois", "adresse": "5, avenue Inventée, Fès"})
+    r = extraire_champs_libres(natif(texte), "contrats", client, REGISTRE)
+    assert r.valeurs() == {"duree": "douze mois"}
+    assert "adresse : valeur du moteur absente du texte source, rejetee" in r.alertes
 
 
 def test_aucune_valeur_llm_dans_alertes_ni_repr():

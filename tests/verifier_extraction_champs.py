@@ -39,7 +39,7 @@ def main():
     if client and client.modeles_charges():
         sys.exit("[ARRET] Un modele est charge dans Ollama : jamais OCR et LLM en meme temps.")
     registre, config = registre_par_defaut(), charger_config()
-    libres, _ = charger_champs_libres()
+    libres, _, _ = charger_champs_libres()
     fichiers = sorted(p for p in DOSSIER.rglob("*") if p.is_file())
     extractions = {f: extraire(f) for f in fichiers}
     taches = [t for f, e in extractions.items() for t in taches_depuis_extraction(f, e)]

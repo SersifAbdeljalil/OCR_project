@@ -22,12 +22,33 @@
     "champs_libres_llm : SEULS champs que le LLM peut remplir (texte libre). Les champs",
     "structures (dates, montants, numeros, CIN, RIB, IBAN, ICE) restent aux regex : s'ils",
     "sont absents, ils restent absents. Les champs d'une categorie qui ne sont ni ici ni",
-    "dans 'champs' (ex. duree, periode, adresse) ne sont extraits par personne.",
+    "dans 'champs' ne sont extraits par personne.",
     "descriptions_champs_libres : une ligne par champ, reprise dans prompts/extraction.txt."
   ],
   "champs_libres_llm": ["fournisseur", "titulaire", "beneficiaire", "objet", "etablissement",
                         "intitule", "mention", "emetteur", "parties", "banque", "titre",
-                        "personne", "organisme"],
+                        "personne", "organisme", "duree", "periode", "adresse"],
+  "_explication_controles": [
+    "controles_champs_libres : verifications supplementaires d'un champ libre du LLM.",
+    "rejet_si_etiquette : la valeur est REJETEE si toutes ses apparitions sont sur une",
+    "ligne qui porte une de ces etiquettes (ou juste sous une ligne qui ne contient que",
+    "l'etiquette). Tolerance OCR comme pour les autres etiquettes.",
+    "zone_titre_obligatoire : si la valeur n'est pas dans la zone titre (15 premieres",
+    "lignes, voir config.py), alerte et validation humaine obligatoire."
+  ],
+  "controles_champs_libres": {
+    "fournisseur": {
+      "rejet_si_etiquette": [
+        "\\bclient\\b",
+        "\\bdestinataire\\b",
+        "\\bfacture\\s+a\\b",
+        "\\bdoit\\b",
+        "\\ba\\s+l.attention\\s+de\\b",
+        "\\badresse\\s+a\\b"
+      ],
+      "zone_titre_obligatoire": true
+    }
+  },
   "descriptions_champs_libres": {
     "fournisseur": "nom de l'entreprise ou de la personne qui émet la facture",
     "titulaire": "nom de la personne à qui le document est délivré",
@@ -41,7 +62,10 @@
     "banque": "nom de la banque",
     "titre": "titre du document",
     "personne": "nom de la personne principale concernée",
-    "organisme": "organisme qui émet le document"
+    "organisme": "organisme qui émet le document",
+    "duree": "durée du contrat, telle qu'écrite",
+    "periode": "période couverte par le document, telle qu'écrite",
+    "adresse": "adresse postale de la personne ou de l'organisme principal du document"
   },
   "champs": {
     "numero": {

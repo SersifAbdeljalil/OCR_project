@@ -547,6 +547,28 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     regex et 22 champs LLM trouvés, 54 absents, 2 rejets anti-invention ; totaux ok 7,
     écart 1, manquant 1 ; validation 5/14 ; 10 à 50 s par document ; lot 290 s ;
     pic OCR 1686 Mo (1 relance). rip.pdf : RIB maintenant TROUVÉ (RIB en 4 groupes).
+- FAIT (après b10b) : décisions sur les champs libres.
+  - Contrôles du fournisseur (`controles_champs_libres` dans config/extraction.json,
+    règles générales) :
+    a) REJET si toutes les apparitions de la valeur sont sur une ligne qui porte une
+       étiquette de destinataire (client, destinataire, facturé à, doit, à l'attention
+       de, adressé à ; tolérance OCR), ou juste sous une ligne qui ne contient QUE
+       cette étiquette. Une apparition ailleurs (ex. en-tête) suffit pour garder la valeur.
+    b) Valeur absente de la zone titre (15 lignes, config.zone_titre) -> alerte
+       « hors de la zone titre » + validation obligatoire (valeur gardée).
+  - Champs libres ajoutés : duree (contrats), periode (banque), adresse (toutes
+    catégories, champ sensible), avec le garde-fou anti-invention.
+  - `localiser_toutes()` renvoie toutes les apparitions ; `charger_champs_libres()` renvoie
+    (libres, descriptions, controles).
+  - Tests : 487 au total.
+  - Mesure docs_synthetiques/ AVANT -> APRÈS : fournisseur f05 et f09 = le CLIENT ->
+    ABSENT (rejeté, alerte) ; f05 passe en validation. Valeurs fausses : 5 -> 3, aucune
+    nouvelle (restent f03 « … (auto-entrepreneur) » écrit ainsi dans le document, f06 arabe
+    -> A_Valider, f08 copie fidèle de l'OCR dégradé -> validation). Regex inchangées
+    (50/60, zéro valeur fausse). Total 55/70. Mesure faite avec une fenêtre de navigateur
+    ouverte (temps : 12 à 39 s par document, lot 196 s).
+  - EN ATTENTE : relancer verifier_extraction_champs.py sur docs_test/ quand
+    l'utilisateur confirme que ses documents réels sont remis en place.
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur

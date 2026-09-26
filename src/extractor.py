@@ -344,9 +344,19 @@ def extraire_champs(lignes: list, categorie: str, registre: dict = None,
 
 # --- 5. Champs LIBRES par LLM (etape b10b) ---------------------------------------------
 def charger_champs_libres(chemin: Path = CHEMIN_CONFIG):
-    """(liste des champs libres autorises au LLM, descriptions pour le prompt)."""
+    """(liste des champs libres autorises au LLM, descriptions pour le prompt,
+    controles par champ). Les etiquettes de rejet recoivent la tolerance OCR."""
     brut = json.loads(Path(chemin).read_text(encoding="utf-8"))
-    return brut.get("champs_libres_llm", []), brut.get("descriptions_champs_libres", {})
+    tolerance = brut.get("tolerance_ocr_etiquettes", True)
+    controles = {}
+    for nom, c in brut.get("controles_champs_libres", {}).items():
+        controles[nom] = {
+            "rejet_re": [re.compile(tolerer_ocr(e) if tolerance else e)
+                         for e in c.get("rejet_si_etiquette", [])],
+            "zone_titre": bool(c.get("zone_titre_obligatoire")),
+        }
+    return (brut.get("champs_libres_llm", []), brut.get("descriptions_champs_libres", {}),
+            controles)
 
 
 def cle_comparaison(texte: str) -> str:
@@ -356,13 +366,13 @@ def cle_comparaison(texte: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
-def localiser(valeur: str, lignes: list):
-    """Garde-fou anti-invention : la valeur se retrouve-t-elle dans le texte source ?
-    Comparaison tolerante aux accents, a la casse et aux espaces (y compris sur
-    plusieurs lignes). Renvoie (trouvee, indice de ligne, confiance OCR minimale)."""
+def localiser_toutes(valeur: str, lignes: list) -> list:
+    """Toutes les apparitions de la valeur dans le texte source, comparaison tolerante
+    aux accents, a la casse et aux espaces (y compris a cheval sur plusieurs lignes).
+    Renvoie une liste de (indices des lignes couvertes, confiance OCR minimale)."""
     cible = cle_comparaison(valeur)
     if not cible:
-        return False, None, None
+        return []
     morceaux, debuts, position = [], [], 0
     for l in lignes:
         cle = cle_comparaison(l.texte)
@@ -370,13 +380,51 @@ def localiser(valeur: str, lignes: list):
         morceaux.append(cle)
         position += len(cle) + 1                    # +1 : l'espace qui separe les lignes
     joint = " ".join(morceaux)
-    trouve = joint.find(cible)
-    if trouve < 0:
+    apparitions, depart = [], 0
+    while (trouve := joint.find(cible, depart)) >= 0:
+        fin = trouve + len(cible)
+        couvertes = [i for i, d in enumerate(debuts)
+                     if d < fin and d + len(morceaux[i]) >= trouve]
+        confs = [lignes[i].confiance for i in couvertes if lignes[i].confiance is not None]
+        apparitions.append((couvertes, min(confs) if confs else None))
+        depart = trouve + 1
+    return apparitions
+
+
+def localiser(valeur: str, lignes: list):
+    """Garde-fou anti-invention : la valeur se retrouve-t-elle dans le texte source ?
+    Renvoie (trouvee, indice de ligne, confiance OCR minimale) de la 1re apparition."""
+    apparitions = localiser_toutes(valeur, lignes)
+    if not apparitions:
         return False, None, None
-    fin = trouve + len(cible)
-    couvertes = [i for i, d in enumerate(debuts) if d < fin and d + len(morceaux[i]) >= trouve]
-    confs = [lignes[i].confiance for i in couvertes if lignes[i].confiance is not None]
-    return True, couvertes[0], (min(confs) if confs else None)
+    couvertes, confiance = apparitions[0]
+    return True, couvertes[0], confiance
+
+
+def _sur_ligne_destinataire(couvertes: list, lignes: list, motifs: list) -> bool:
+    """La valeur est-elle sur une ligne qui porte une etiquette de destinataire
+    (« Client : ... »), ou juste sous une ligne qui ne contient QUE cette etiquette
+    (« Facture a : » puis le nom a la ligne suivante) ?"""
+    for i in couvertes:
+        if any(m.search(normaliser_ligne(lignes[i].texte)) for m in motifs):
+            return True
+    precedente = couvertes[0] - 1
+    if precedente >= 0:
+        texte = normaliser_ligne(lignes[precedente].texte)
+        for m in motifs:
+            trouve = m.search(texte)
+            if trouve:
+                reste = (texte[:trouve.start()] + texte[trouve.end():]).replace(":", "")
+                if not re.search(r"\w", reste):     # la ligne ne contient QUE l'etiquette
+                    return True
+    return False
+
+
+def _dans_zone_titre(valeur: str, lignes: list) -> bool:
+    """La valeur est-elle dans la zone titre (memes 15 lignes que rules.py) ?"""
+    from src.config import zone_titre
+    zone = zone_titre("\n".join(l.texte for l in lignes))
+    return cle_comparaison(valeur) in cle_comparaison(zone)
 
 
 def extraire_champs_libres(lignes: list, categorie: str, client, registre: dict = None,
@@ -387,7 +435,7 @@ def extraire_champs_libres(lignes: list, categorie: str, client, registre: dict 
     Ne leve jamais d'exception."""
     registre = registre or registre_par_defaut()
     res = ResultatChamps()
-    libres, descriptions = charger_champs_libres(chemin_config)
+    libres, descriptions, controles = charger_champs_libres(chemin_config)
     a_demander = [c for c in champs_attendus(registre, categorie) if c in libres]
     if not a_demander:
         return res
@@ -410,11 +458,27 @@ def extraire_champs_libres(lignes: list, categorie: str, client, registre: dict 
         if valeur is None or not str(valeur).strip():
             continue                                  # absent du document : reste absent
         valeur = re.sub(r"\s+", " ", str(valeur)).strip()
-        trouvee, ligne, confiance = localiser(valeur, lignes)
-        if not trouvee:
+        apparitions = localiser_toutes(valeur, lignes)
+        if not apparitions:
             res.alertes.append(f"{nom} : valeur du moteur absente du texte source, rejetee")
             res.necessite_validation_humaine = True
             continue
+        controle = controles.get(nom, {})
+        if controle.get("rejet_re"):
+            # On garde seulement les apparitions qui ne sont pas sur une ligne de
+            # destinataire (ex. le moteur a rendu le CLIENT au lieu du fournisseur)
+            apparitions = [a for a in apparitions
+                           if not _sur_ligne_destinataire(a[0], lignes, controle["rejet_re"])]
+            if not apparitions:
+                res.alertes.append(f"{nom} : valeur trouvee seulement sur une ligne de "
+                                   "destinataire (client...), rejetee")
+                res.necessite_validation_humaine = True
+                continue
+        couvertes, confiance = apparitions[0]
+        ligne = couvertes[0]
+        if controle.get("zone_titre") and not _dans_zone_titre(valeur, lignes):
+            res.alertes.append(f"{nom} : valeur hors de la zone titre, a verifier")
+            res.necessite_validation_humaine = True
         res.champs[nom] = ChampExtrait(valeur, None, ligne, lignes[ligne].page, confiance,
                                        1, methode="llm")
         if confiance is not None and confiance < SEUIL_CONFIANCE_LIGNE_OCR:
