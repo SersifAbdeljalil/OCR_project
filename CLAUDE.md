@@ -567,8 +567,22 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     -> A_Valider, f08 copie fidèle de l'OCR dégradé -> validation). Regex inchangées
     (50/60, zéro valeur fausse). Total 55/70. Mesure faite avec une fenêtre de navigateur
     ouverte (temps : 12 à 39 s par document, lot 196 s).
-  - EN ATTENTE : relancer verifier_extraction_champs.py sur docs_test/ quand
-    l'utilisateur confirme que ses documents réels sont remis en place.
+  - FAIT : mesure sur docs_test/ remis en place (4 documents RÉELS seulement : america,
+    bac, RIB CDG, rip ; les autres documents réels ne sont pas retrouvés ; plus aucune
+    facture fictive). Catégorie = mots-clés seuls. Une fenêtre Chrome restait ouverte
+    (160 Mo, 2,8 Go libres).
+      america (autres) : titre, personne (LLM), date (regex 0,98) ; validation non ; 36 s
+      bac (autres) : titre, personne (LLM), date (regex 0,78) ; 2 rejets anti-invention ;
+        validation OUI ; 74 s
+      RIB CDG (attestations par mots-clés ; « banque » selon le LLM de classification à b9) :
+        emetteur, beneficiaire, adresse (LLM), date, rib (regex) ; 1 rejet ; validation OUI ; 33 s
+      rip (banque) : banque, titulaire, objet, adresse (LLM), rib (regex, trouvé grâce au RIB
+        en 4 groupes) ; validation non ; 27 s
+    Total : 5 champs regex, 11 LLM, 20 absents, 3 rejets anti-invention ; validation 2/4 ;
+    lot 178 s ; pic OCR 1587 Mo (1 relance) ; modèle déchargé.
+    LIMITES : 4 documents seulement (non représentatif) ; catégorie par mots-clés sans
+    classification LLM ; exactitude des valeurs NON mesurable (on ne lit pas les documents
+    réels) ; à refaire quand les autres documents réels seront retrouvés.
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
