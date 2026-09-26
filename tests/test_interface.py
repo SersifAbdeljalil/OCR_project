@@ -206,6 +206,42 @@ def test_creer_une_categorie(espace, monkeypatch):
     assert charger_registre(CHEMIN_REGISTRE) == REGISTRE                 # vrai registre intact
 
 
+# --- 3. Design : polices locales, theme, pastilles ------------------------------------------
+POLICES = RACINE / "app" / "static" / "fonts"
+
+
+def test_polices_locales_et_licences_ofl():
+    for nom in ("fraunces", "fraunces-italique", "inter", "inter-italique"):
+        assert (POLICES / f"{nom}.ttf").stat().st_size > 100_000
+    for nom in ("OFL-Fraunces.txt", "OFL-Inter.txt"):
+        assert "SIL Open Font License, Version 1.1" in (POLICES / nom).read_text(encoding="utf-8")
+
+
+def test_theme_sans_ressource_internet():
+    import tomllib
+    conf = tomllib.loads((RACINE / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
+    assert conf["server"]["enableStaticServing"] is True
+    theme = conf["theme"]
+    assert (theme["backgroundColor"], theme["textColor"], theme["primaryColor"],
+            theme["borderColor"]) == ("#F2EDE4", "#2A2420", "#4A3A30", "#C8B8A2")
+    for police in theme["fontFaces"]:
+        assert police["url"].startswith("app/static/fonts/")          # fichier local
+        assert (RACINE / "app" / police["url"].removeprefix("app/")).exists()
+    # Aucune adresse Internet dans la configuration ni dans l'application
+    for fichier in (RACINE / ".streamlit" / "config.toml", APP):
+        texte = fichier.read_text(encoding="utf-8")
+        assert "http://" not in texte.replace("http://127.0.0.1", "") and "https://" not in texte
+
+
+def test_pastilles_et_etiquettes(espace):
+    deposer(espace, confiance=0.60, validation_=True)
+    at = demarrer("Documents")
+    blocs = " ".join(str(h.proto.body) for h in at.get("html"))
+    assert 'class="pastille p-a_valider"' in blocs and "à valider" in blocs
+    assert 'class="etiquette">Champs extraits' in blocs
+    assert "font-variant-numeric: tabular-nums" in blocs              # bloc de style charge
+
+
 def test_texte_complet_et_historique(espace):
     deposer(espace)
     at = demarrer("Documents")

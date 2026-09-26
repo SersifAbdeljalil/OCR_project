@@ -452,6 +452,21 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     worker toutes les N pages.
   - Texte natif > 30 % de lettres arabes (SEUIL_PART_ARABE) -> validation obligatoire.
     (Remplacé ensuite par 70 %, voir la règle de confiance.)
+  - Tests : 391 au total.
+  - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
+      3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
+                          répond maintenant « autre » et propose « cv » ; les 2 autres :
+                          moteur toujours « diplomes », bloqués par la nouvelle règle
+      bac-2-1           : moteur diplomes -> autre (« cachet »), toujours A_Valider (OCR)
+      bac.pdf           : moteur diplomes -> attestations, toujours A_Valider (OCR)
+      cN.pdf            : moteur banque -> autre (« carte_d_identite »), A_Valider
+      demand eljadida   : proposition « avis_d_imposition » (exemple du prompt) -> « lettre »
+      damand a monsieur : proposition « demande_d_inscription » -> « candidature », A_Valider
+      america           : inchangé (autre, « confirmation_d_inscription »), A_Valider
+      6 rangés inchangés : 4 factures (0.95), deug.pdf et rip.pdf (règle métier)
+      RIB CDG, bac-1-1  : inchangés (A_Valider)
+    Bilan : 6 rangés (9 avant), 11 A_Valider (8 avant). OCR 45,8 s (pic 1894 Mo),
+    chargement 6,6 s, moteur 318 s pour 15 appels. Modèle déchargé : oui.
 - FAIT : jeu SYNTHÉTIQUE `tests/docs_synthetiques/` (10 factures FICTIVES f01 à f10,
   LISEZMOI.md, verite_terrain.json) : lisible par Claude, versionné dans git ; valeurs
   affichables. Sert à mesurer l'extraction champ par champ.
@@ -721,23 +736,35 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     L'interface n'a JAMAIS été lancée sur les documents réels.
   - `lancer_interface.bat` en CRLF (`.gitattributes` : *.bat eol=crlf).
   - INSTALLATION.md : section « Interface de validation », pièges (port occupé, .venv).
-  - Tests : 391 au total.
-  - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
-      3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
-                          répond maintenant « autre » et propose « cv » ; les 2 autres :
-                          moteur toujours « diplomes », bloqués par la nouvelle règle
-      bac-2-1           : moteur diplomes -> autre (« cachet »), toujours A_Valider (OCR)
-      bac.pdf           : moteur diplomes -> attestations, toujours A_Valider (OCR)
-      cN.pdf            : moteur banque -> autre (« carte_d_identite »), A_Valider
-      demand eljadida   : proposition « avis_d_imposition » (exemple du prompt) -> « lettre »
-      damand a monsieur : proposition « demande_d_inscription » -> « candidature », A_Valider
-      america           : inchangé (autre, « confirmation_d_inscription »), A_Valider
-      6 rangés inchangés : 4 factures (0.95), deug.pdf et rip.pdf (règle métier)
-      RIB CDG, bac-1-1  : inchangés (A_Valider)
-    Bilan : 6 rangés (9 avant), 11 A_Valider (8 avant). OCR 45,8 s (pic 1894 Mo),
-    chargement 6,6 s, moteur 318 s pour 15 appels. Modèle déchargé : oui.
-  - Piège Windows : ne jamais réécrire un fichier avec Get-Content/Set-Content de
-    PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
+- FAIT (design de l'interface, 2026-09-26) : palette et polices choisies par l'utilisateur.
+  - Couleurs : fond cream #F2EDE4, texte cocoa #2A2420, boutons drip #4A3A30, bordures et
+    fonds secondaires sand #C8B8A2 ; statuts : ambre #8A5A12 / fond #EFD9A8 (« à valider »,
+    « à vérifier »), terracotta #9C3F28 / fond #EBC6B6 (« erreur »), olive #3F5A36
+    (« rangé / validé »). Contrastes WCAG AA vérifiés (calcul) : cocoa/cream 13,1 ;
+    cream/drip 9,3 ; cocoa/sand 7,9 ; ambre/cream 5,1 ; cocoa/ambre doux 11,1 ;
+    terracotta/cream 5,7 ; cocoa/terracotta doux 9,7 ; olive/cream 6,6. INTERDIT :
+    texte blanc sur sand (1,9).
+  - Polices GRATUITES, fichiers dans le projet : app/static/fonts/ (Fraunces + italique
+    pour les titres, Inter + italique pour le texte), téléchargées une seule fois depuis le
+    dépôt officiel google/fonts (dossier ofl/), avec OFL-Fraunces.txt et OFL-Inter.txt.
+    Licence vérifiée : SIL Open Font License 1.1 (en-tête des fichiers ET métadonnées des
+    polices). Inter a la fonction « tnum » (chiffres à largeur fixe) ; aucune des deux n'a
+    de vraies petites capitales -> majuscules réduites et espacées.
+  - `.streamlit/config.toml` : [theme] (couleurs, font = Inter, headingFont = Fraunces,
+    codeFont = Inter), 4 tables [[theme.fontFaces]] vers app/static/fonts/,
+    server.enableStaticServing = true ; barre latérale en sand.
+  - app/streamlit_app.py : bloc STYLE (st.html) : `etiquette()` (petites capitales
+    espacées), chiffres à largeur fixe (tabular-nums) dans st.code, les champs et les
+    métriques, `pastille(statut)` colorée, accents des titres en Fraunces italique.
+  - Vérifié sur le vrai serveur (dossiers temporaires VIDES) : les 4 polices servies en
+    local (HTTP 200) ; page d'accueil sans adresse externe (seule la licence Apache, en
+    commentaire) ; aucune connexion sortante du serveur. Limite : les requêtes du
+    NAVIGATEUR ne sont pas observables ainsi (vérifiable dans l'onglet Réseau des outils
+    de développement).
+  - Tests : 3 de plus dans test_interface.py (polices + licences, thème sans adresse
+    Internet, pastilles et étiquettes) ; 573 au total.
+- NOTE (piège Windows) : ne jamais réécrire un fichier avec Get-Content/Set-Content de
+  PowerShell 5.1 (il relit l'UTF-8 comme de l'ANSI et casse les accents).
 - FAIT : blocage vérifié : l'outil Read de Claude Code refuse tests/docs_test/essai_blocage.txt.
   Limite : la règle « deny Read » vise l'outil Read, pas les commandes shell
   (Get-Content, cat...). Claude ne doit donc jamais utiliser le shell pour lire ces dossiers.

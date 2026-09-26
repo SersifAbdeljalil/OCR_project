@@ -2,7 +2,9 @@
 # CONFIDENTIALITE (obligatoire) :
 #   - l'interface n'ecoute QUE sur cet ordinateur (127.0.0.1) : jamais accessible
 #     depuis le reseau ;
-#   - aucune statistique d'utilisation n'est envoyee.
+#   - aucune statistique d'utilisation n'est envoyee ;
+#   - aucune ressource chargee depuis Internet : les polices sont des fichiers du
+#     projet (app/static/fonts/), servis localement.
 
 [server]
 address = "127.0.0.1"
@@ -10,6 +12,8 @@ port = 8501
 headless = true
 # Taille maximale d'un fichier depose (Mo)
 maxUploadSize = 200
+# Sert les fichiers de app/static/ (polices locales) a l'adresse app/static/...
+enableStaticServing = true
 
 [browser]
 gatherUsageStats = false
@@ -18,3 +22,53 @@ serverAddress = "127.0.0.1"
 [client]
 # Pas de menu « Deploy » ni d'options de developpeur
 toolbarMode = "minimal"
+
+# --- Theme (palette choisie par l'utilisateur, contrastes verifies WCAG AA) ---------
+#   cream #F2EDE4 (fond)  cocoa #2A2420 (texte, 13,1:1 sur cream)
+#   drip  #4A3A30 (boutons, texte cream 9,3:1)  sand #C8B8A2 (bordures, fonds
+#   secondaires ; texte cocoa 7,9:1 ; JAMAIS de texte blanc sur sand : 1,9:1)
+[theme]
+base = "light"
+primaryColor = "#4A3A30"
+backgroundColor = "#F2EDE4"
+secondaryBackgroundColor = "#C8B8A2"
+textColor = "#2A2420"
+linkColor = "#4A3A30"
+borderColor = "#C8B8A2"
+showWidgetBorder = true
+baseRadius = "0.5rem"
+# Polices LOCALES (licence SIL OFL 1.1, fichiers OFL-*.txt a cote des polices)
+font = "Inter, sans-serif"
+headingFont = "Fraunces, serif"
+# Les valeurs copiables (st.code) : sans-serif a chiffres fixes (voir le style de l'app)
+codeFont = "Inter, sans-serif"
+headingFontWeights = [600, 600, 500, 500, 500, 500]
+
+[theme.sidebar]
+backgroundColor = "#C8B8A2"
+secondaryBackgroundColor = "#F2EDE4"
+textColor = "#2A2420"
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter.ttf"
+weight = "100 900"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-italique.ttf"
+weight = "100 900"
+style = "italic"
+
+[[theme.fontFaces]]
+family = "Fraunces"
+url = "app/static/fonts/fraunces.ttf"
+weight = "100 900"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Fraunces"
+url = "app/static/fonts/fraunces-italique.ttf"
+weight = "100 900"
+style = "italic"

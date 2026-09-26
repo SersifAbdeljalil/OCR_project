@@ -17,6 +17,7 @@ Pour les tests seulement, des variables d'environnement remplacent les dossiers 
 TRI_DOSSIER_ENTREE, TRI_DOSSIER_SORTIE, TRI_DOSSIER_DATA, TRI_REGISTRE.
 """
 
+import html
 import os
 import sys
 from decimal import Decimal
@@ -37,6 +38,53 @@ from src.llm import ClientOllama                                         # noqa:
 from src.pipeline import lister_documents as documents_en_attente       # noqa: E402
 
 ECRANS = ["Déposer et trier", "Documents"]
+
+# --- Style ---------------------------------------------------------------------
+# Complete le theme de .streamlit/config.toml (couleurs et polices LOCALES).
+# Contrastes verifies (WCAG AA >= 4,5:1) : ambre #8A5A12 sur cream 5,1 ; cocoa sur
+# ambre doux #EFD9A8 11,1 ; terracotta #9C3F28 sur cream 5,7 ; cocoa sur terracotta
+# doux #EBC6B6 9,7 ; olive #3F5A36 sur cream 6,6 ; cocoa sur sand 7,9.
+STYLE = """
+<style>
+/* Etiquettes de section : petites capitales espacees (Inter n'a pas de vraies
+   petites capitales : majuscules reduites et espacees) */
+.etiquette {
+  font-family: "Inter", sans-serif; font-weight: 600; font-size: 0.72rem;
+  text-transform: uppercase; letter-spacing: 0.14em; color: #4A3A30;
+  border-bottom: 1px solid #C8B8A2; padding-bottom: 0.25rem; margin: 1.1rem 0 0.5rem 0;
+}
+/* Accents des titres : Fraunces italique */
+h1 em, h2 em, h3 em { font-family: "Fraunces", serif; font-style: italic; font-weight: 400; }
+/* Montants, dates, numeros : sans-serif a chiffres de largeur fixe */
+[data-testid="stCode"] pre, [data-testid="stCode"] code, input,
+[data-testid="stMetricValue"], .chiffres {
+  font-family: "Inter", sans-serif !important;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
+}
+/* Pastilles de statut */
+.pastille {
+  display: inline-block; padding: 0.12rem 0.65rem; border-radius: 999px;
+  font-family: "Inter", sans-serif; font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em; border: 1px solid;
+}
+.p-a_valider, .p-a_verifier { background: #EFD9A8; color: #2A2420; border-color: #8A5A12; }
+.p-erreur                   { background: #EBC6B6; color: #2A2420; border-color: #9C3F28; }
+.p-range, .p-valide         { background: #F2EDE4; color: #3F5A36; border-color: #3F5A36; }
+.p-autres                   { background: #C8B8A2; color: #2A2420; border-color: #C8B8A2; }
+</style>
+"""
+
+
+def etiquette(texte: str):
+    """Etiquette de section en petites capitales espacees."""
+    st.html(f'<div class="etiquette">{html.escape(texte)}</div>')
+
+
+def pastille(statut: str, libelle: str = None):
+    """Pastille coloree : ambre (a valider / a verifier), terracotta (erreur),
+    olive (range / valide), sand (autres)."""
+    texte = libelle or LIBELLES_STATUTS.get(statut, statut)
+    st.html(f'<span class="pastille p-{html.escape(statut)}">{html.escape(texte)}</span>')
 ORDRE_STATUTS = {"a_valider": 0, "a_verifier": 1, "range": 2, "valide": 3, "autres": 4}
 LIBELLES_STATUTS = {"a_valider": "à valider", "a_verifier": "à vérifier", "range": "rangé",
                     "valide": "validé", "autres": "autres"}
@@ -77,7 +125,7 @@ def afficher_message():
 
 # --- Ecran 1 : deposer et trier ---------------------------------------------------------
 def ecran_deposer(R: dict):
-    st.header("Déposer et trier")
+    st.header("Déposer et *trier*")
     afficher_message()
 
     fichiers = st.file_uploader(
@@ -117,17 +165,21 @@ def suivi_du_tri(R: dict, en_attente: int):
         st.rerun()
     resume = etat["resume"]
     if resume:
-        st.subheader("Dernier tri")
+        etiquette("Dernier tri")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Rangés", resume.get("ranges") or 0)
         c2.metric("À valider", resume.get("a_valider") or 0)
         c3.metric("Erreurs", resume.get("erreurs") or 0)
         c4.metric("Durée (s)", resume.get("duree_s") or 0)
+        if resume.get("erreurs"):
+            pastille("erreur", f"{resume['erreurs']} erreur(s) : documents restés en entrée")
+        elif resume.get("a_valider"):
+            pastille("a_valider", f"{resume['a_valider']} document(s) à valider")
 
 
 # --- Ecran 2 : documents -----------------------------------------------------------------
 def ecran_documents(R: dict, registre: dict):
-    st.header("Documents")
+    st.header("Documents *traités*")
     afficher_message()
     fiches = validation.lister_documents(R["sortie"])
     if not fiches:
@@ -168,6 +220,7 @@ def ecran_documents(R: dict, registre: dict):
 def detail_document(R: dict, registre: dict, chemin: Path, fiche):
     doc = validation.charger_document(chemin)
     cle = str(abs(hash(str(chemin))))
+    pastille(fiche.statut)
     if fiche.raison:
         st.warning(f"Raison : {fiche.raison}")
     if fiche.alertes:
@@ -177,8 +230,10 @@ def detail_document(R: dict, registre: dict, chemin: Path, fiche):
 
     gauche, droite = st.columns([1, 1])
     with gauche:
+        etiquette("Aperçu")
         image_du_document(doc, cle)
     with droite:
+        etiquette("Classement")
         saisies, categorie, sous = champs_du_document(registre, doc, cle)
         boutons(R, registre, doc, chemin, saisies, categorie, sous)
 
@@ -230,7 +285,7 @@ def champs_du_document(registre: dict, doc, cle: str):
                              key=f"sous_{cle}_{categorie}")
         sous = None if choix == AUTOMATIQUE else choix
 
-    st.subheader("Champs")
+    etiquette("Champs extraits")
     saisies = {}
     for champ in champs_attendus(registre, categorie):
         initial = texte_valeur(champ, doc.champs.get(champ), types)
@@ -302,6 +357,7 @@ def creer_categorie(R: dict, doc, chemin: Path, cle: str):
 # --- Page ----------------------------------------------------------------------------------
 def main():
     st.set_page_config(page_title="Tri documentaire", layout="wide")
+    st.html(STYLE)
     R = reglages()
     registre = charger_registre(R["registre"])
     ecran = st.sidebar.radio("Écran", ECRANS, key="ecran")
