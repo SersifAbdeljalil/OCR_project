@@ -142,6 +142,16 @@ def test_alerte_contexte_presque_plein():
     assert rep.ok and any("contexte presque plein" in a for a in rep.alertes)
 
 
+def test_client_depuis_le_profil_performant():
+    from src.config import charger_profil
+    session = FausseSession([generation('{"type_document": "facture"}')])
+    c = ClientOllama.depuis_profil(charger_profil("performant"), session=session)
+    c.generer_json("c", SCHEMA)
+    assert session.posts[0]["json"]["options"] == {"num_ctx": 4096, "num_gpu": 99,
+                                                   "temperature": 0}
+    assert session.posts[0]["timeout"] == 120
+
+
 # --- 3. keep_alive et chargement pour un lot ---------------------------------
 def test_modele_charge_pendant_le_lot_puis_decharge():
     c = client(FausseReponse({"load_duration": 4_000_000_000}),     # prechargement

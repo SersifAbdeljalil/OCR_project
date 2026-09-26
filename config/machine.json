@@ -1,0 +1,41 @@
+{
+  "_explication": [
+    "Reglages propres a la MACHINE. Pour un autre PC : changer 'profil_actif' (ou ajouter",
+    "un profil), et les dossiers si besoin. Aucun chemin de ce PC n'est ecrit dans le code.",
+    "dossiers : chemins relatifs a la racine du projet, ou chemins absolus.",
+    "threads_ocr : threads de calcul de PaddleOCR (= nombre de coeurs conseille).",
+    "seuil_ram_worker_ocr_mo : le worker OCR est relance au-dela (Mo).",
+    "modele_llm / num_gpu / num_ctx / delai_llm_s : reglages d'Ollama. num_gpu 0 = CPU ;",
+    "sur un PC avec carte graphique, une valeur elevee (ex. 99) place le modele sur le GPU.",
+    "ocr_et_llm_simultanes : false = Ollama DOIT etre vide avant l'OCR (8 Go de RAM) ;",
+    "true = pas de verification (machine avec assez de RAM). L'ordre reste OCR puis LLM."
+  ],
+  "profil_actif": "modeste",
+  "dossiers": {
+    "entree": "Folder_Entree",
+    "sortie": "Folder_Sortie"
+  },
+  "ollama_url": "http://localhost:11434",
+  "profils": {
+    "modeste": {
+      "description": "i3 2 coeurs, 8 Go de RAM, sans GPU (PC actuel)",
+      "threads_ocr": 2,
+      "seuil_ram_worker_ocr_mo": 1536,
+      "modele_llm": "phi4-mini",
+      "num_gpu": 0,
+      "num_ctx": 2048,
+      "delai_llm_s": 300,
+      "ocr_et_llm_simultanes": false
+    },
+    "performant": {
+      "description": "8 coeurs ou plus, 16 Go de RAM ou plus, GPU facultatif",
+      "threads_ocr": 6,
+      "seuil_ram_worker_ocr_mo": 4096,
+      "modele_llm": "phi4-mini",
+      "num_gpu": 99,
+      "num_ctx": 4096,
+      "delai_llm_s": 120,
+      "ocr_et_llm_simultanes": true
+    }
+  }
+}

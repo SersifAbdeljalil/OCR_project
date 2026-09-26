@@ -268,6 +268,44 @@ def registre_par_defaut() -> dict:
 
 
 # --- 5. Petits outils de consultation --------------------------------------
+# --- 6. Profil de machine (config/machine.json) --------------------------------
+CHEMIN_MACHINE = RACINE / "config" / "machine.json"
+CLES_PROFIL = {"threads_ocr": int, "seuil_ram_worker_ocr_mo": (int, float),
+               "modele_llm": str, "num_gpu": int, "num_ctx": int,
+               "delai_llm_s": (int, float), "ocr_et_llm_simultanes": bool}
+
+
+def _chemin_reglable(valeur: str) -> Path:
+    """Chemin relatif -> par rapport a la racine du projet ; absolu -> tel quel."""
+    p = Path(valeur)
+    return p if p.is_absolute() else RACINE / p
+
+
+def charger_profil(nom: str = None, chemin: Path = CHEMIN_MACHINE) -> dict:
+    """Profil de machine a utiliser (celui de 'profil_actif', ou `nom`), complete par
+    les dossiers d'entree / sortie et l'adresse d'Ollama. Verifie les reglages."""
+    try:
+        brut = json.loads(Path(chemin).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as err:
+        raise ErreurRegistre(f"config/machine.json illisible ({type(err).__name__})") from None
+    nom = nom or brut.get("profil_actif")
+    profils = brut.get("profils", {})
+    if nom not in profils:
+        raise ErreurRegistre(f"profil de machine inconnu : {nom!r} "
+                             f"(disponibles : {', '.join(profils)})")
+    profil = dict(profils[nom])
+    erreurs = [f"reglage {cle!r} absent ou invalide" for cle, t in CLES_PROFIL.items()
+               if not isinstance(profil.get(cle), t) or isinstance(profil.get(cle), bool)
+               and t is not bool]
+    if erreurs:
+        raise ErreurRegistre(f"profil {nom!r} : " + " ; ".join(erreurs))
+    dossiers = brut.get("dossiers", {})
+    profil.update(nom=nom, ollama_url=brut.get("ollama_url", "http://localhost:11434"),
+                  dossier_entree=_chemin_reglable(dossiers.get("entree", "Folder_Entree")),
+                  dossier_sortie=_chemin_reglable(dossiers.get("sortie", "Folder_Sortie")))
+    return profil
+
+
 def trouver_categorie(registre: dict, nom: str):
     """Renvoie la categorie portant ce nom, ou None si elle n'existe pas."""
     return next((c for c in registre["categories"] if c["nom"] == nom), None)

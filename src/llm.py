@@ -77,11 +77,11 @@ def compacter(texte: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", texte).strip()
 
 
-def budget_caracteres(consigne: str) -> int:
+def budget_caracteres(consigne: str, num_ctx: int = NUM_CTX) -> int:
     """Caracteres disponibles pour le document, une fois la consigne et la
     reponse comptees (estimation prudente)."""
     tokens_consigne = len(consigne) / CARACTERES_PAR_TOKEN
-    tokens_libres = NUM_CTX - tokens_consigne - RESERVE_REPONSE_TOKENS
+    tokens_libres = num_ctx - tokens_consigne - RESERVE_REPONSE_TOKENS
     return max(0, int(tokens_libres * CARACTERES_PAR_TOKEN))
 
 
@@ -100,13 +100,13 @@ def tronquer(texte: str, budget: int):
 
 
 def preparer_prompt(nom: str, texte_document: str, dossier: Path = DOSSIER_PROMPTS,
-                    variables: dict = None):
+                    variables: dict = None, num_ctx: int = NUM_CTX):
     """Prompt complet : consigne du fichier (avec ses autres emplacements, ex.
     $categories) + texte tronque. Renvoie (prompt, tronque)."""
     modele = charger_prompt(nom, dossier)
     variables = dict(variables or {})
     consigne = modele.substitute(texte="", **variables)   # budget calcule sans le texte
-    texte, tronque = tronquer(texte_document, budget_caracteres(consigne))
+    texte, tronque = tronquer(texte_document, budget_caracteres(consigne, num_ctx))
     return modele.substitute(texte=texte, **variables), tronque
 
 
@@ -129,10 +129,19 @@ class ClientOllama:
     """Client Ollama. `session` permet aux tests de simuler le serveur."""
 
     def __init__(self, url: str = OLLAMA_URL, modele: str = MODELE,
-                 delai_s: float = DELAI_APPEL_S, keep_alive=0, session=None):
+                 delai_s: float = DELAI_APPEL_S, keep_alive=0, session=None,
+                 num_gpu: int = OPTIONS["num_gpu"], num_ctx: int = NUM_CTX):
         self.url, self.modele, self.delai_s = url.rstrip("/"), modele, delai_s
         self.keep_alive = keep_alive
         self.session = session or requests.Session()
+        self.options = {**OPTIONS, "num_gpu": num_gpu, "num_ctx": num_ctx}
+
+    @classmethod
+    def depuis_profil(cls, profil: dict, **autres):
+        """Client regle selon le profil de machine (config/machine.json)."""
+        return cls(url=profil["ollama_url"], modele=profil["modele_llm"],
+                   delai_s=profil["delai_llm_s"], num_gpu=profil["num_gpu"],
+                   num_ctx=profil["num_ctx"], **autres)
 
     # -- Etat du serveur --
     def verifier(self):
@@ -199,7 +208,7 @@ class ClientOllama:
     # -- Appels --
     def _un_appel(self, prompt: str, schema: dict) -> dict:
         corps = {"model": self.modele, "prompt": prompt, "format": schema,
-                 "stream": False, "keep_alive": self.keep_alive, "options": dict(OPTIONS)}
+                 "stream": False, "keep_alive": self.keep_alive, "options": dict(self.options)}
         r = self.session.post(f"{self.url}/api/generate", json=corps, timeout=self.delai_s)
         r.raise_for_status()
         return r.json()
@@ -230,7 +239,7 @@ class ClientOllama:
         rep.duree_s = round(time.perf_counter() - debut, 2)
         # Ollama tronque lui-meme un prompt trop long (sans le dire) : si le prompt
         # depasse la place prevue, notre estimation de 2,5 caracteres/token etait fausse.
-        if rep.tokens_lus > NUM_CTX - RESERVE_REPONSE_TOKENS:
+        if rep.tokens_lus > self.options["num_ctx"] - RESERVE_REPONSE_TOKENS:
             rep.alertes.append("contexte presque plein : une partie du prompt a pu etre perdue")
         return rep
 
@@ -239,7 +248,7 @@ class ClientOllama:
         """Prompt du fichier prompts/<nom_prompt>.txt + texte tronque -> JSON."""
         try:
             prompt, tronque = preparer_prompt(nom_prompt, texte_document, dossier_prompts,
-                                              variables)
+                                              variables, self.options["num_ctx"])
         except Exception as err:                    # fichier absent, emplacement inconnu...
             return ReponseLLM(ok=False, erreur=f"prompt invalide ({type(err).__name__})")
         rep = self.generer_json(prompt, schema)

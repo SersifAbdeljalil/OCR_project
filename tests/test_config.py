@@ -8,6 +8,7 @@ Aucun document reel n'est utilise : seulement le registre et des phrases invente
 import copy
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -247,6 +248,52 @@ def test_toutes_les_erreurs_sont_listees(registre):
     registre["categories"][0]["nom"] = "Factures"
     registre["categories"][1]["mots_cles"].append(r"\b(")
     assert len(verifier_registre(registre)) >= 2
+
+
+# --- 3 bis. Profil de machine (config/machine.json) ---------------------------
+def test_profils_du_projet():
+    from src.config import RACINE, charger_profil
+    modeste = charger_profil()
+    assert modeste["nom"] == "modeste" and modeste["threads_ocr"] == 2
+    assert modeste["seuil_ram_worker_ocr_mo"] == 1536 and modeste["num_gpu"] == 0
+    assert modeste["ocr_et_llm_simultanes"] is False
+    assert modeste["dossier_entree"] == RACINE / "Folder_Entree"     # relatif -> projet
+    assert charger_profil("performant")["ocr_et_llm_simultanes"] is True
+
+
+def _machine(tmp_path, **modifs):
+    base = json.loads((Path(__file__).parent.parent / "config" / "machine.json")
+                      .read_text(encoding="utf-8"))
+    for cle, valeur in modifs.items():
+        if cle == "dossiers":
+            base["dossiers"] = valeur
+        else:
+            base["profils"]["modeste"][cle] = valeur
+    chemin = tmp_path / "machine.json"
+    chemin.write_text(json.dumps(base), encoding="utf-8")
+    return chemin
+
+
+def test_profil_inconnu(tmp_path):
+    from src.config import charger_profil
+    with pytest.raises(ErreurRegistre, match="profil de machine inconnu"):
+        charger_profil("superordinateur")
+
+
+@pytest.mark.parametrize("cle, valeur", [("threads_ocr", "2"), ("num_gpu", True),
+                                         ("ocr_et_llm_simultanes", "non"),
+                                         ("modele_llm", None)])
+def test_profil_invalide(tmp_path, cle, valeur):
+    from src.config import charger_profil
+    with pytest.raises(ErreurRegistre, match=f"'{cle}'"):
+        charger_profil(chemin=_machine(tmp_path, **{cle: valeur}))
+
+
+def test_dossiers_absolus_acceptes(tmp_path):
+    from src.config import charger_profil
+    chemin = _machine(tmp_path, dossiers={"entree": str(tmp_path / "E"), "sortie": "S"})
+    p = charger_profil(chemin=chemin)
+    assert p["dossier_entree"] == tmp_path / "E"
 
 
 # --- 4. Chargement depuis un fichier ---------------------------------------

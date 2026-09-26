@@ -583,6 +583,55 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     LIMITES : 4 documents seulement (non représentatif) ; catégorie par mots-clés sans
     classification LLM ; exactitude des valeurs NON mesurable (on ne lit pas les documents
     réels) ; à refaire quand les autres documents réels seront retrouvés.
+- NOTE : tests/docs_synthetiques/ avait perdu f01, f10 et verite_terrain.json (effacés
+  pendant le rangement de docs_test) ; restaurés depuis git le 2026-09-26.
+- FAIT (étape b11) : src/pipeline.py, run_pipeline.py, INSTALLATION.md (non encore validé).
+  - PORTABILITÉ : `config/machine.json` : `profil_actif` (« modeste » : 2 threads OCR,
+    relance 1536 Mo, phi4-mini, num_gpu 0, num_ctx 2048, délai 300 s, OCR et LLM PAS
+    simultanés ; « performant » : 6 threads, 4096 Mo, num_gpu 99, num_ctx 4096, 120 s,
+    simultanés autorisés), `dossiers` (entrée / sortie, relatifs au projet ou absolus),
+    `ollama_url`. `config.charger_profil()` vérifie les réglages. `ClientOllama.depuis_profil()`
+    (modèle, num_gpu, num_ctx, délai viennent du profil). Aucun chemin propre au PC dans le
+    code (vérifié par recherche).
+    « ocr_et_llm_simultanes » : false -> Ollama doit être vide avant l'OCR (déchargement
+    tenté, sinon lot arrêté, documents laissés en entrée) ; true -> pas de vérification.
+    L'ordre reste OCR puis LLM dans les deux cas.
+  - `traiter_lot()` : 0) purge data/ocr/ > 7 jours, documents déjà traités écartés
+    (empreinte SHA-256 dans data/etat/traites.json, écriture sûre ; même fichier déposé
+    deux fois dans un lot -> traité une fois) et déplacés vers Traites/ ; 1) lecture de
+    tous les documents (illisible -> A_Valider) ; vérification du moteur AVANT l'OCR
+    (sinon arrêt, documents laissés en entrée) ; 2) OCR en un lot (progression « OCR [i/N] ») ;
+    3) `with moteur.lot()` : pour chaque document classer -> extraire_document ->
+    DocumentSortie -> ranger_document (progression « [i/N] ») ; erreur sur un document ->
+    A_Valider « erreur de traitement (Type) », le lot continue ; 4) déchargement vérifié,
+    dossier OCR du lot supprimé si aucun document n'est resté en erreur.
+  - Décision data/ocr/ appliquée : lignes OCR (texte, confiance, cadre, taille, dpi,
+    orientation, réduction) copiées dans le .json de A_Valider (clé « pages ») ; le dossier
+    OCR est COMMUN au lot : supprimé à la fin du lot (pas document par document), sinon
+    purgé après 7 jours.
+  - Journal data/logs/pipeline_<horodatage>.jsonl : début, OCR, un événement par document
+    (nom MASQUÉ, décision, catégorie, confiance, destination masquée, nb d'alertes, durée),
+    fin. Aucune valeur ni texte (testé).
+  - filer.py : `deplacer_vers_traites()` réutilisable ; `supplement` pour le .json de A_Valider.
+  - run_pipeline.py : `--profil`, `--entree`, `--sortie` ; résumé (rangés, A_Valider, déjà
+    traités, erreurs, pages OCR, temps OCR / LLM / total, liste « à vérifier » avec noms
+    masqués, alertes, chemin du journal). Code de sortie 1 s'il y a des erreurs ou alertes.
+  - INSTALLATION.md : Python 3.11, runtime Visual C++, .venv, ExecutionPolicy,
+    requirements.txt (numpy<2, 3 opencv alignés), Ollama + phi4-mini, modèles PaddleOCR,
+    config/machine.json, vérification, utilisation, pièges connus.
+  - Tests : 510 rapides (test_pipeline.py : 15 avec Ollama et moteur SIMULÉS) + test de
+    bout en bout RÉEL `test_bout_en_bout_reel` (marqué ollama_reel) qui EXIGE la sécurité
+    (tout document rangé : bonne catégorie, dossier Factures, champs exacts) et AFFICHE
+    les écarts de prudence.
+  - Test de bout en bout réel (10 factures fictives, navigateur fermé) : 4 rangés
+    (f01, f02, f03, f07), 6 A_Valider, 0 erreur ; 364 s (OCR 11 s, LLM 350 s : ~35 s par
+    document pour classification + extraction) ; pic OCR 1263 Mo ; dossier OCR supprimé.
+      Prudence : f10 en A_Valider (« Licence antivirus » -> mot-clé diplôme « licence » ->
+      verdict « faible » -> 0.60) : FAIBLESSE du registre, à trancher.
+      ÉCHEC du test : f03 rangé avec fournisseur « Oasis Services Nettoyage
+      (auto-entrepreneur) » (écrit ainsi dans le document) alors que la vérité terrain
+      attend « Oasis Services Nettoyage » : à trancher (convention de la vérité terrain,
+      ou nettoyage des parenthèses).
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
@@ -632,5 +681,5 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b9) FAIT : src/classifier.py.
    b10a) FAIT : src/extractor.py, partie regex.
    b10b) FAIT : champs libres par LLM + fusion.
-   Suite : src/pipeline.py, src/pipeline.py,
-   app/streamlit_app.py, avec un test pour chacun (dossier tests/).
+   b11) FAIT (à valider) : src/pipeline.py, run_pipeline.py, INSTALLATION.md.
+   Suite : app/streamlit_app.py, avec un test pour chacun (dossier tests/).

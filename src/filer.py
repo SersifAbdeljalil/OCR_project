@@ -168,16 +168,25 @@ def _deposer(original: Path, dossier: Path, base: str, contenus: dict,
     resultat.ok, resultat.dossier, resultat.fichiers = True, dossier, ecrits
 
     # La copie est verifiee : on peut deplacer l'original vers Traites/
+    resultat.original_deplace, alerte = deplacer_vers_traites(original, dossier_entree)
+    if alerte:
+        resultat.alertes.append(alerte)
+    return resultat
+
+
+def deplacer_vers_traites(original, dossier_entree: Path = DOSSIER_ENTREE):
+    """Deplace l'original vers Folder_Entree/Traites/ (doublons _1, _2...).
+    Renvoie (deplace, alerte ou None). Ne leve jamais."""
+    original = Path(original)
     try:
         traites = Path(dossier_entree) / DOSSIER_TRAITES
         traites.mkdir(parents=True, exist_ok=True)
         nom = base_libre(traites, original.stem, [original.suffix]) + original.suffix
         shutil.move(str(original), str(traites / nom))
-        resultat.original_deplace = True
+        return True, None
     except Exception as err:
-        resultat.alertes.append(
-            f"original non deplace vers Traites ({_raison(err)}) : il reste dans Folder_Entree")
-    return resultat
+        return False, (f"original non deplace vers Traites ({_raison(err)}) : "
+                       "il reste dans Folder_Entree")
 
 
 def _preparer_base(base: str, dossier: Path, original: Path, contenus: dict):
@@ -191,11 +200,13 @@ def _preparer_base(base: str, dossier: Path, original: Path, contenus: dict):
 def envoyer_a_valider(original, raison: str, doc: DocumentSortie = None,
                       alertes: list = None, registre: dict = None,
                       dossier_sortie: Path = DOSSIER_SORTIE,
-                      dossier_entree: Path = DOSSIER_ENTREE) -> ResultatRangement:
+                      dossier_entree: Path = DOSSIER_ENTREE,
+                      supplement: dict = None) -> ResultatRangement:
     """Depose l'original dans A_Valider/ (nom d'origine nettoye) avec :
         - le .txt (texte brut) ;
         - UN SEUL .json complet : meme schema que les documents ranges, plus
-          raison, alertes et categorie_proposee (pour l'ecran de validation).
+          raison, alertes et categorie_proposee (pour l'ecran de validation), plus
+          `supplement` (ex. les lignes OCR avec confiance et cadre pour Streamlit).
     Sert aussi aux fichiers illisibles (doc=None) : pas de .txt, et un .json aux
     memes cles, mais vides."""
     original = Path(original)
@@ -203,7 +214,7 @@ def envoyer_a_valider(original, raison: str, doc: DocumentSortie = None,
     resultat = ResultatRangement(ok=False, a_valider=True, alertes=alertes)
     dossier = Path(dossier_sortie) / DOSSIER_A_VALIDER
     supplement = {"raison": raison, "alertes": alertes,
-                  "categorie_proposee": doc.type if doc else None}
+                  "categorie_proposee": doc.type if doc else None, **(supplement or {})}
     if doc is not None:
         contenus = {".txt": doc.texte_brut, ".json": doc.vers_json(supplement) + "\n"}
     else:
@@ -227,14 +238,16 @@ def envoyer_a_valider(original, raison: str, doc: DocumentSortie = None,
 def ranger_document(original, doc: DocumentSortie, alertes: list = None,
                     registre: dict = None,
                     dossier_sortie: Path = DOSSIER_SORTIE,
-                    dossier_entree: Path = DOSSIER_ENTREE) -> ResultatRangement:
+                    dossier_entree: Path = DOSSIER_ENTREE,
+                    supplement_a_valider: dict = None) -> ResultatRangement:
     """Range un document traite. Il part dans A_Valider/ si une validation humaine
-    est necessaire, ou si sa categorie n'est pas dans le registre."""
+    est necessaire, ou si sa categorie n'est pas dans le registre (avec
+    `supplement_a_valider` dans son .json)."""
     registre = registre or registre_par_defaut()
     original = Path(original)
     alertes = list(alertes or [])
-    options = dict(alertes=alertes, registre=registre,
-                   dossier_sortie=dossier_sortie, dossier_entree=dossier_entree)
+    options = dict(alertes=alertes, registre=registre, dossier_sortie=dossier_sortie,
+                   dossier_entree=dossier_entree, supplement=supplement_a_valider)
 
     if doc.necessite_validation_humaine:
         return envoyer_a_valider(original, "validation humaine necessaire", doc=doc, **options)

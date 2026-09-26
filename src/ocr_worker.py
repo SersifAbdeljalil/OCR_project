@@ -142,7 +142,8 @@ def lancer_ocr(taches: list, dossier_travail: Path = None,
                delai_page_s: float = DELAI_PAGE_S,
                delai_chargement_s: float = DELAI_CHARGEMENT_S,
                threads: int = THREADS,
-               seuil_ram_mo: float = SEUIL_RAM_WORKER_OCR_MO) -> ResultatLot:
+               seuil_ram_mo: float = SEUIL_RAM_WORKER_OCR_MO,
+               progression=None) -> ResultatLot:
     """OCR d'un lot de pages [{"fichier", "page"}] dans un sous-process.
     Ne leve pas d'exception pour une page : elle est notee en erreur.
     Le worker est relance des que sa RAM depasse seuil_ram_mo (apres une page)."""
@@ -179,6 +180,8 @@ def lancer_ocr(taches: list, dossier_travail: Path = None,
                     lot.pages[(page.fichier, page.page)] = page
                     lot.pic_ram_mo = max(lot.pic_ram_mo, page.pic_ram_mo)
                     lues += 1
+                    if progression:                  # compteurs seulement, jamais de texte
+                        progression(len(lot.pages), len(taches))
             return bool(nouvelles)
 
         try:
