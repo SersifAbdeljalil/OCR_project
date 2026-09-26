@@ -190,22 +190,42 @@ class ResultatValidation:
     alertes: list = field(default_factory=list)
 
 
-def _destination(type_doc: str, texte: str, registre: dict, sortie: Path):
+def _destination(type_doc: str, texte: str, registre: dict, sortie: Path,
+                 sous_dossier: str = None):
+    """Dossier de destination. sous_dossier : choisi par l'humain (doit exister dans
+    la categorie) ; sinon choisi automatiquement (choisir_sous_dossier)."""
     cat = trouver_categorie(registre, type_doc)
     if cat is None:
         if type_doc != DOSSIER_AUTRES.lower():
             raise ErreurValidation(f"categorie absente du registre : {type_doc} "
                                    "(la creer d'abord)")
         return Path(sortie) / DOSSIER_AUTRES, None
-    sous = choisir_sous_dossier(cat, texte)
+    if sous_dossier:
+        noms = [sd["nom"] for sd in cat.get("sous_dossiers", [])]
+        if sous_dossier not in noms:
+            raise ErreurValidation(f"sous-dossier inconnu pour {type_doc} : {sous_dossier}")
+        sous = sous_dossier
+    else:
+        sous = choisir_sous_dossier(cat, texte)
     dossier = Path(sortie) / cat["dossier"]
     return (dossier / sous if sous else dossier), sous
 
 
+def sous_dossier_actuel(chemin_json, registre: dict = None):
+    """Sous-dossier ou se trouve le document (None s'il est a la racine de sa categorie)."""
+    registre = registre or registre_par_defaut()
+    chemin_json = Path(chemin_json)
+    for cat in registre["categories"]:
+        if chemin_json.parent.parent.name == cat["dossier"]:
+            if chemin_json.parent.name in [sd["nom"] for sd in cat.get("sous_dossiers", [])]:
+                return chemin_json.parent.name
+    return None
+
+
 def enregistrer_corrections(chemin_json, corrections: dict = None, categorie: str = None,
                             registre: dict = None, sortie: Path = DOSSIER_SORTIE,
-                            dossier_logs: Path = None, action: str = "validation"
-                            ) -> ResultatValidation:
+                            dossier_logs: Path = None, action: str = "validation",
+                            sous_dossier: str = None) -> ResultatValidation:
     """Valide un document (avec ou sans corrections). Voir l'en-tete du module.
     Si une valeur est invalide, RIEN n'est modifie (ErreurValidation)."""
     registre = registre or registre_par_defaut()
@@ -222,7 +242,8 @@ def enregistrer_corrections(chemin_json, corrections: dict = None, categorie: st
     type_doc = categorie or type_ancien
     if type_doc is None:
         raise ErreurValidation("categorie inconnue : en choisir une")
-    dossier_cible, sous_dossier = _destination(type_doc, doc.texte, registre, sortie)
+    dossier_cible, sous_dossier = _destination(type_doc, doc.texte, registre, sortie,
+                                               sous_dossier)
     autorises = champs_attendus(registre, type_doc)
     if type_doc != type_ancien:
         historique.append({"champ": "type", "ancienne_valeur": type_ancien,
@@ -342,6 +363,144 @@ def rejeter_document(chemin_json, registre: dict = None, sortie: Path = DOSSIER_
     return enregistrer_corrections(chemin_json, {}, categorie=DOSSIER_AUTRES.lower(),
                                    registre=registre, sortie=sortie,
                                    dossier_logs=dossier_logs, action="rejet")
+
+
+# --- 5 bis. Pour l'interface : apercu, depot, tri en arriere-plan ---------------------------
+EXTENSIONS_ACCEPTEES = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp",
+                        ".docx", ".dotx", ".xls", ".xlsx"}
+
+
+def apercu_page(original, page_ocr: dict = None, numero: int = 1,
+                seuil: float = None, dpi_defaut: int = 100):
+    """Image de la page (PIL), avec les lignes OCR de confiance < seuil SURLIGNEES.
+    page_ocr : entree de « pages » du .json (largeur, hauteur, dpi, lignes avec cadre) ;
+    l'image est remise a la taille analysee par l'OCR pour que les cadres tombent juste.
+    Renvoie (image, nombre de lignes surlignees, nombre de pages du fichier)."""
+    import io
+    import pymupdf
+    from PIL import Image, ImageDraw
+    from src.config import SEUIL_CONFIANCE_LIGNE_OCR
+    seuil = SEUIL_CONFIANCE_LIGNE_OCR if seuil is None else seuil
+    with pymupdf.open(str(original)) as doc:
+        nb_pages = doc.page_count
+        page = doc[max(0, min(numero, nb_pages) - 1)]
+        dpi = (page_ocr or {}).get("dpi") or dpi_defaut
+        pix = page.get_pixmap(dpi=dpi) if (doc.is_pdf or nb_pages > 1) \
+            else pymupdf.Pixmap(str(original))
+    if pix.alpha:
+        pix = pymupdf.Pixmap(pix, 0)
+    image = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+    if not page_ocr:
+        return image, 0, nb_pages
+    taille = (page_ocr.get("largeur"), page_ocr.get("hauteur"))
+    if all(taille) and image.size != taille:
+        image = image.resize(taille)                 # meme repere que les cadres OCR
+    calque = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    dessin = ImageDraw.Draw(calque)
+    surlignees = 0
+    for ligne in page_ocr.get("lignes", []):
+        if ligne.get("confiance", 1) < seuil and ligne.get("cadre"):
+            points = [tuple(p) for p in ligne["cadre"]]
+            dessin.polygon(points, fill=(255, 200, 0, 90), outline=(220, 0, 0, 255), width=3)
+            surlignees += 1
+    image = Image.alpha_composite(image.convert("RGBA"), calque).convert("RGB")
+    return image, surlignees, nb_pages
+
+
+def deposer_fichiers(fichiers: list, entree: Path) -> list:
+    """Copie les fichiers deposes [(nom, contenu en octets)] dans Folder_Entree.
+    Nom nettoye (pas de chemin), extension verifiee, jamais d'ecrasement (_1, _2...).
+    Renvoie (noms deposes, noms refuses)."""
+    entree = Path(entree)
+    entree.mkdir(parents=True, exist_ok=True)
+    deposes, refuses = [], []
+    for nom, contenu in fichiers:
+        nom = Path(str(nom)).name                    # jamais de dossier dans le nom
+        if Path(nom).suffix.lower() not in EXTENSIONS_ACCEPTEES:
+            refuses.append(nom)
+            continue
+        cible, n = entree / nom, 0
+        while cible.exists():
+            n += 1
+            cible = entree / f"{Path(nom).stem}_{n}{Path(nom).suffix}"
+        cible.write_bytes(contenu)
+        deposes.append(cible.name)
+    return deposes, refuses
+
+
+def _process_actif(pid: int) -> bool:
+    """Le process existe-t-il encore ? (API Windows, sans envoyer de signal)."""
+    import ctypes
+    import ctypes.wintypes as wt
+    k32 = ctypes.windll.kernel32
+    k32.OpenProcess.restype = wt.HANDLE
+    poignee = k32.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
+    if not poignee:
+        return False
+    try:
+        code = wt.DWORD()
+        k32.GetExitCodeProcess(poignee, ctypes.byref(code))
+        return code.value == 259                              # STILL_ACTIVE
+    finally:
+        k32.CloseHandle(poignee)
+
+
+def etat_tri(dossier_data: Path = DOSSIER_DATA) -> dict:
+    """{"en_cours", "progression" (derniere ligne « [i/N] ... »), "resume" (dernier lot)}.
+    Un verrou dont le process n'existe plus est retire."""
+    dossier_data = Path(dossier_data)
+    verrou = dossier_data / "etat" / "tri.lock"
+    en_cours = False
+    if verrou.exists():
+        try:
+            pid = json.loads(verrou.read_text(encoding="utf-8"))["pid"]
+            en_cours = _process_actif(pid)
+        except (OSError, ValueError, KeyError):
+            en_cours = False
+        if not en_cours:
+            verrou.unlink(missing_ok=True)
+    progression = None
+    sortie = dossier_data / "logs" / "tri_interface.log"
+    if sortie.exists():
+        lignes = [l for l in sortie.read_text(encoding="utf-8", errors="replace").splitlines()
+                  if re.match(r"\s*(\[\d+/\d+\]|OCR)", l) or "document(s) dans" in l]
+        progression = lignes[-1].strip() if lignes else None
+    resume = None
+    journaux = sorted((dossier_data / "logs").glob("pipeline_*.jsonl"))
+    if journaux:
+        for ligne in reversed(journaux[-1].read_text(encoding="utf-8").splitlines()):
+            evt = json.loads(ligne)
+            if evt.get("evenement") == "fin":
+                resume = {k: evt.get(k) for k in ("total", "ranges", "a_valider", "erreurs",
+                                                   "deja_traites", "duree_s", "horodatage")}
+                break
+    return {"en_cours": en_cours, "progression": progression, "resume": resume}
+
+
+def lancer_tri(dossier_data: Path = DOSSIER_DATA, commande: list = None):
+    """Lance le pipeline dans un SOUS-PROCESS detache (l'interface reste utilisable).
+    Refuse si un tri est deja en cours (verrou data/etat/tri.lock).
+    Renvoie (lance, message)."""
+    import subprocess
+    import sys
+    from src.config import RACINE
+    dossier_data = Path(dossier_data)
+    if etat_tri(dossier_data)["en_cours"]:
+        return False, "un tri est deja en cours"
+    (dossier_data / "etat").mkdir(parents=True, exist_ok=True)
+    (dossier_data / "logs").mkdir(parents=True, exist_ok=True)
+    commande = commande or [sys.executable, str(RACINE / "run_pipeline.py")]
+    sortie = open(dossier_data / "logs" / "tri_interface.log", "w", encoding="utf-8")
+    drapeaux = 0x08000000 | 0x00000200            # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
+    process = subprocess.Popen(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
+                               env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                               creationflags=drapeaux)
+    sortie.close()                                   # le sous-process garde sa propre copie
+    (dossier_data / "etat" / "tri.lock").write_text(
+        json.dumps({"pid": process.pid, "debut": datetime.now().isoformat(timespec="seconds")}),
+        encoding="utf-8")
+    journaliser("lancement_tri", dossier_data / "logs")
+    return True, "tri lance"
 
 
 # --- 6. Nouvelle categorie ------------------------------------------------------------------

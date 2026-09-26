@@ -79,6 +79,8 @@ réglés dans ce fichier :
 - **opencv 4.10.0.84** pour les TROIS paquets opencv (`opencv-python`,
   `opencv-contrib-python`, `opencv-python-headless`) : ils partagent le même module `cv2`,
   des versions différentes se marchent dessus.
+- **protobuf 3.20.2** (exigé par paddlepaddle) et **streamlit 1.60.0** (interface) :
+  compatibles, vérifié par `pip check`.
 
 Vérifier :
 ```powershell
@@ -171,7 +173,38 @@ Tests qui utilisent le VRAI Ollama (plus lents, OCR arrêté, navigateur fermé)
    `Folder_Entree\Traites\`. Journal dans `data\logs\`.
 
 Un lot interrompu peut être relancé : les documents déjà rangés ne sont jamais
-retraités.
+retraités. Pour retraiter quand même un document déjà vu : `run_pipeline.py --forcer`.
+
+---
+
+## 10 bis. Interface de validation (Streamlit)
+
+Lancement : **double-clic sur `lancer_interface.bat`** (à la racine du projet). Le fichier
+active le `.venv` et ouvre http://127.0.0.1:8501 dans le navigateur. Fermer la fenêtre
+noire arrête l'interface.
+
+Commande équivalente :
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app\streamlit_app.py
+```
+
+Confidentialité (réglée dans `.streamlit\config.toml`, et rappelée dans le `.bat`) :
+- `server.address = "127.0.0.1"` : l'interface n'est accessible QUE depuis ce PC,
+  jamais depuis le réseau ;
+- `browser.gatherUsageStats = false` : aucune statistique n'est envoyée.
+
+Écrans :
+1. **Déposer et trier** : glisser-déposer des documents (copiés dans le dossier
+   d'entrée), bouton « Lancer le tri » (le tri tourne en arrière-plan, un seul à la fois,
+   progression affichée), résumé du dernier tri.
+2. **Documents** : tous les documents traités, filtres par catégorie et par statut
+   (« à valider » en premier). Pour chaque document : l'image de la page avec les lignes
+   OCR peu sûres surlignées, les champs modifiables avec une icône de copie, la
+   catégorie et le sous-dossier, le texte complet (copiable), l'historique des
+   corrections ; boutons « Valider », « Rejeter (vers Autres) », « Créer une catégorie ».
+
+Sur une machine modeste, ne pas lancer « Proposer des mots-clés » pendant un tri
+(le bouton est désactivé pendant un tri).
 
 ---
 
@@ -187,4 +220,6 @@ retraités.
 | Fichier écrit en UTF-16 par `>` | redirection de PowerShell 5.1 | utiliser `Out-File -Encoding utf8` ou Python |
 | Mauvais Python utilisé | plusieurs versions installées | toujours `.\.venv\Scripts\python.exe` |
 | Lot arrêté : « Ollama a un modèle chargé » | un modèle est resté en mémoire | attendre, ou `ollama stop phi4-mini`, puis relancer |
+| Interface : « port 8501 déjà utilisé » | une interface tourne déjà | utiliser l'onglet déjà ouvert, ou fermer l'autre fenêtre |
+| `lancer_interface.bat` ne trouve pas `.venv` | environnement non créé ou projet déplacé | refaire les étapes 4 et 5 |
 | PC très lent, RAM saturée | OCR et modèle en même temps, ou navigateur ouvert | profil « modeste », fermer le navigateur |

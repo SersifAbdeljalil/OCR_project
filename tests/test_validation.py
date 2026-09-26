@@ -16,9 +16,11 @@ from src.config import CHEMIN_REGISTRE, charger_registre
 from src.filer import envoyer_a_valider, ranger_document
 from src.llm import ClientOllama
 from src.schemas import DocumentSortie
-from src.validation import (ErreurValidation, charger_document, creer_categorie,
-                            enregistrer_corrections, lister_documents, mot_cle_vers_regex,
-                            nom_de_categorie, proposer_mots_cles, rejeter_document)
+from src.validation import (ErreurValidation, apercu_page, charger_document,
+                            creer_categorie, deposer_fichiers, enregistrer_corrections,
+                            etat_tri, lancer_tri, lister_documents, mot_cle_vers_regex,
+                            nom_de_categorie, proposer_mots_cles, rejeter_document,
+                            sous_dossier_actuel)
 
 REGISTRE = charger_registre()
 TEXTE = ("Société Exemple SARL\nFACTURE\nN° : FA-2026-0007\nDate : 15/09/2026\n"
@@ -285,6 +287,110 @@ def test_creer_categorie_refusee_registre_intact(registre_temp, nom, mots, messa
 
 def test_nom_de_categorie():
     assert nom_de_categorie("Avis d'imposition") == "avis_d_imposition"
+
+
+# --- 4 bis. Pour l'interface : sous-dossier, apercu, depot, tri --------------------------------------
+DIPLOME = ("DIPLÔME DE LICENCE\nUniversité Exemple\nTitulaire : Prénom Nom\n"
+           "Fait à Rabat, le 12 juillet 2020")
+
+
+def test_sous_dossier_choisi_par_l_humain(espace):
+    doc = document("diplomes", {"titulaire": "Prénom Nom", "date_obtention": "2020-07-12"},
+                   texte=DIPLOME)
+    chemin = deposer(espace, doc)
+    assert chemin.parent.name == "Licence"
+    assert sous_dossier_actuel(chemin, REGISTRE) == "Licence"
+    r = valider(chemin, espace, sous_dossier="Master")
+    assert r.deplace and r.chemin_json.parent.name == "Master"
+    assert r.chemin_json.name == "diplome_master_prenom_nom.json"      # nom suit le sous-dossier
+    with pytest.raises(ErreurValidation, match="sous-dossier inconnu"):
+        valider(r.chemin_json, espace, sous_dossier="BTS")
+
+
+def test_apercu_page_lignes_peu_sures_surlignees(tmp_path):
+    import pymupdf
+    chemin = tmp_path / "scan.png"
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 200, 100), False)
+    pix.clear_with(255)
+    pix.save(chemin)
+    page = {"page": 1, "largeur": 200, "hauteur": 100, "dpi": None, "lignes": [
+        {"texte": "sure", "confiance": 0.99, "cadre": [[10, 10], [90, 10], [90, 30], [10, 30]]},
+        {"texte": "douteuse", "confiance": 0.50, "cadre": [[10, 60], [90, 60], [90, 80], [10, 80]]}]}
+    image, surlignees, nb_pages = apercu_page(chemin, page)
+    assert (surlignees, nb_pages, image.size) == (1, 1, (200, 100))
+    assert image.getpixel((50, 20)) == (255, 255, 255)                 # ligne sure : intacte
+    assert image.getpixel((50, 70)) != (255, 255, 255)                 # ligne douteuse : coloree
+    assert image.getpixel((10, 70))[0] > 200 and image.getpixel((10, 70))[1] < 50   # bord rouge
+
+
+def test_apercu_sans_lignes_ocr(tmp_path):
+    import pymupdf
+    d = pymupdf.open()
+    d.new_page()
+    d.new_page()
+    d.save(tmp_path / "x.pdf")
+    image, surlignees, nb_pages = apercu_page(tmp_path / "x.pdf", None, 2)
+    assert surlignees == 0 and nb_pages == 2 and image.size[0] > 500
+
+
+def test_deposer_fichiers(tmp_path):
+    e = tmp_path / "Folder_Entree"
+    (e).mkdir()
+    (e / "facture.pdf").write_bytes(b"deja la")
+    deposes, refuses = deposer_fichiers(
+        [("facture.pdf", b"nouveau"), ("..\\..\\piege.pdf", b"x"), ("notes.txt", b"x"),
+         ("photo.JPG", b"x")], e)
+    assert deposes == ["facture_1.pdf", "piege.pdf", "photo.JPG"] and refuses == ["notes.txt"]
+    assert (e / "facture.pdf").read_bytes() == b"deja la"             # jamais d'ecrasement
+    assert not (tmp_path / "piege.pdf").exists()                        # pas de sortie du dossier
+
+
+def test_tri_en_arriere_plan_un_seul_a_la_fois(tmp_path):
+    import sys
+    import time
+    d = tmp_path / "data"
+    commande = [sys.executable, "-c",
+                "import time; print('3 document(s) dans le dossier d entree', flush=True); "
+                "print('[2/3] lecture', flush=True); time.sleep(4)"]
+    lance, _ = lancer_tri(d, commande)
+    assert lance
+    assert lancer_tri(d, commande) == (False, "un tri est deja en cours")
+    time.sleep(1.5)
+    etat = etat_tri(d)
+    assert etat["en_cours"] and etat["progression"] == "[2/3] lecture"
+    for _ in range(40):
+        if not etat_tri(d)["en_cours"]:
+            break
+        time.sleep(0.25)
+    assert not etat_tri(d)["en_cours"] and not (d / "etat" / "tri.lock").exists()
+
+
+def test_etat_tri_resume_du_dernier_lot(tmp_path):
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "pipeline_20260926_100000_000000.jsonl").write_text(
+        '{"evenement": "debut"}\n{"evenement": "fin", "total": 3, "ranges": 2, '
+        '"a_valider": 1, "erreurs": 0, "deja_traites": 0, "duree_s": 12.5}\n', encoding="utf-8")
+    etat = etat_tri(tmp_path)
+    assert not etat["en_cours"] and etat["resume"]["ranges"] == 2
+    assert etat["resume"]["a_valider"] == 1
+
+
+def test_verrou_perime_retire(tmp_path):
+    (tmp_path / "etat").mkdir()
+    (tmp_path / "etat" / "tri.lock").write_text('{"pid": 999999}', encoding="utf-8")
+    assert etat_tri(tmp_path)["en_cours"] is False
+    assert not (tmp_path / "etat" / "tri.lock").exists()
+
+
+def test_configuration_streamlit_confidentialite():
+    import tomllib
+    racine = Path(__file__).resolve().parent.parent
+    conf = tomllib.loads((racine / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
+    assert conf["server"]["address"] == "127.0.0.1"
+    assert conf["browser"]["gatherUsageStats"] is False
+    bat = (racine / "lancer_interface.bat").read_text(encoding="utf-8")
+    assert "--server.address 127.0.0.1" in bat and "--browser.gatherUsageStats false" in bat
 
 
 # --- 5. Journal ------------------------------------------------------------------------------------

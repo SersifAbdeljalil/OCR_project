@@ -685,6 +685,42 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     PASSE. 5 rangés (f01, f02, f03, f07, f10 : 7/7 champs chacun), 5 A_Valider (f04,
     f05, f06, f08, f09), 0 erreur, prudence : aucune, danger : aucun. 373 s (OCR 12 s,
     LLM 358 s), pic OCR 1264 Mo. Seul changement par rapport à b11 : f10 rangé.
+- FAIT (étape b12b) : interface Streamlit `app/streamlit_app.py` (affichage seulement ;
+  toute la logique est dans src/validation.py).
+  - Installation : streamlit 1.60.0 (+ pandas 3.0.6, pyarrow 24...) ; simulation (--dry-run)
+    puis installation avec numpy<2, opencv<4.11 (x3) et protobuf==3.20.2 (paddle) imposés ;
+    `pip check` OK ; numpy 1.26.4, protobuf 3.20.2, paddle 2.6.2 inchangés.
+    requirements.txt régénéré (90 paquets).
+  - CONFIDENTIALITÉ : `.streamlit/config.toml` : server.address = "127.0.0.1",
+    browser.gatherUsageStats = false, toolbarMode = "minimal" ; `lancer_interface.bat`
+    répète ces options. Vérifié en démarrant le vrai serveur sur des dossiers VIDES :
+    écoute seulement sur 127.0.0.1 (netstat), pas d'URL réseau.
+  - Écran 1 « Déposer et trier » : file_uploader (copie automatique une seule fois par
+    fichier, `validation.deposer_fichiers` : nom sans dossier, extension vérifiée, jamais
+    d'écrasement) ; « Lancer le tri » -> `validation.lancer_tri` (sous-process détaché
+    run_pipeline.py --entree --sortie, sortie dans data/logs/tri_interface.log, verrou
+    data/etat/tri.lock avec le PID : un seul tri à la fois ; verrou périmé retiré) ;
+    `@st.fragment(run_every="3s")` : progression « [i/N] » rafraîchie sans bloquer
+    l'interface ; résumé du dernier tri (événement « fin » du dernier journal pipeline).
+  - Écran 2 « Documents » : filtres par catégorie et par statut, « à valider » en premier ;
+    à gauche `validation.apercu_page` (PyMuPDF + Pillow : image remise à la taille
+    analysée par l'OCR, lignes de confiance < 0,90 surlignées en jaune avec bord rouge ;
+    choix de la page si plusieurs) ; à droite catégorie et sous-dossier modifiables
+    (« (automatique) » ou un sous-dossier ; `enregistrer_corrections(sous_dossier=...)`,
+    `sous_dossier_actuel`), chaque champ en text_input + st.code (icône de copie
+    intégrée) ; texte complet copiable (st.code) ; historique ; boutons Valider,
+    Rejeter (vers Autres), Créer une catégorie (LLM propose, humain confirme ; bouton
+    désactivé pendant un tri).
+  - Bug trouvé par les tests et corrigé : après Valider / Rejeter / Créer, le document
+    à resélectionner passe par la clé « document_suivant » (Streamlit interdit de
+    modifier la clé d'une liste déjà affichée).
+  - Tests : `tests/test_interface.py` (14, AppTest de Streamlit, dossiers et registre
+    TEMPORAIRES via TRI_DOSSIER_ENTREE / SORTIE / DATA et TRI_REGISTRE, documents
+    FICTIFS, aucun tri ni LLM réel) + 8 nouveaux tests dans test_validation.py (aperçu,
+    dépôt, tri en arrière-plan avec commande factice, verrou, config.toml). 570 au total.
+    L'interface n'a JAMAIS été lancée sur les documents réels.
+  - `lancer_interface.bat` en CRLF (`.gitattributes` : *.bat eol=crlf).
+  - INSTALLATION.md : section « Interface de validation », pièges (port occupé, .venv).
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
@@ -736,4 +772,5 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b10b) FAIT : champs libres par LLM + fusion.
    b11) FAIT : src/pipeline.py, run_pipeline.py, INSTALLATION.md.
    b12a) FAIT : src/validation.py (logique de validation, sans interface).
-   Suite : b12b app/streamlit_app.py (voir BESOIN ci-dessus), avec un test pour chacun (dossier tests/).
+   b12b) FAIT : app/streamlit_app.py + lancer_interface.bat + .streamlit/config.toml.
+   Suite : à définir avec l'utilisateur (un module par étape, avec ses tests).

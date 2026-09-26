@@ -1,0 +1,20 @@
+# Configuration de Streamlit pour l'interface de validation.
+# CONFIDENTIALITE (obligatoire) :
+#   - l'interface n'ecoute QUE sur cet ordinateur (127.0.0.1) : jamais accessible
+#     depuis le reseau ;
+#   - aucune statistique d'utilisation n'est envoyee.
+
+[server]
+address = "127.0.0.1"
+port = 8501
+headless = true
+# Taille maximale d'un fichier depose (Mo)
+maxUploadSize = 200
+
+[browser]
+gatherUsageStats = false
+serverAddress = "127.0.0.1"
+
+[client]
+# Pas de menu « Deploy » ni d'options de developpeur
+toolbarMode = "minimal"
