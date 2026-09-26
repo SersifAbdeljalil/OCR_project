@@ -203,9 +203,11 @@ def traiter_document(chemin: Path, extraction, pages: dict, moteur, client, regi
 # --- 4. Le lot ------------------------------------------------------------------------
 def traiter_lot(profil: dict = None, dossier_entree: Path = None, dossier_sortie: Path = None,
                 dossier_data: Path = DOSSIER_DATA, client=None, moteur=None,
-                registre: dict = None, afficher=print) -> BilanLot:
+                registre: dict = None, afficher=print, forcer: bool = False) -> BilanLot:
     """Traite tout Folder_Entree/. Ne leve pas d'exception pour un document :
-    il part en A_Valider, ou reste en place (erreur) pour le prochain lancement."""
+    il part en A_Valider, ou reste en place (erreur) pour le prochain lancement.
+    forcer=True : retraite aussi les documents deja vus (empreinte deja connue) ;
+    un meme fichier present deux fois DANS le lot n'est traite qu'une fois."""
     debut = time.perf_counter()
     profil = profil or charger_profil()
     entree = Path(dossier_entree or profil["dossier_entree"])
@@ -221,7 +223,7 @@ def traiter_lot(profil: dict = None, dossier_entree: Path = None, dossier_sortie
     bilan.journal = journal.chemin
     bilan.ocr_purges = nettoyer_ocr_anciens(dossier_data / "ocr")
     etat = EtatTraites(dossier_data / "etat" / "traites.json")
-    journal.ecrire("debut", profil=profil["nom"], ocr_purges=bilan.ocr_purges)
+    journal.ecrire("debut", profil=profil["nom"], ocr_purges=bilan.ocr_purges, forcer=forcer)
 
     fichiers = lister_documents(entree)
     bilan.total = len(fichiers)
@@ -232,7 +234,7 @@ def traiter_lot(profil: dict = None, dossier_entree: Path = None, dossier_sortie
     a_traiter, vus = [], set()
     for chemin in fichiers:
         cle = empreinte(chemin)
-        if cle in etat or cle in vus:
+        if (cle in etat and not forcer) or cle in vus:
             deplace, alerte = deplacer_vers_traites(chemin, entree)
             r = ResultatDocument(nom_affichable(chemin), "deja_traite",
                                  nb_alertes=0 if deplace else 1)

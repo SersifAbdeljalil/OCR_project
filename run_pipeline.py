@@ -5,6 +5,7 @@ Lancement (depuis le dossier du projet) :
     .\\.venv\\Scripts\\python.exe run_pipeline.py
     .\\.venv\\Scripts\\python.exe run_pipeline.py --profil performant
     .\\.venv\\Scripts\\python.exe run_pipeline.py --entree D:\\Scans --sortie D:\\Classement
+    .\\.venv\\Scripts\\python.exe run_pipeline.py --forcer   (retraite les documents deja vus)
 
 Reglages de la machine (profil, dossiers, Ollama) : config/machine.json.
 Le resume n'affiche aucun nom de personne : les noms de fichiers sont masques
@@ -56,13 +57,16 @@ def main() -> int:
     parser.add_argument("--profil", help="profil de machine (config/machine.json)")
     parser.add_argument("--entree", help="dossier d'entree (sinon config/machine.json)")
     parser.add_argument("--sortie", help="dossier de sortie (sinon config/machine.json)")
+    parser.add_argument("--forcer", action="store_true",
+                        help="retraiter aussi les documents deja traites (deja vus)")
     args = parser.parse_args()
     try:
         profil = charger_profil(args.profil)
     except ErreurRegistre as err:
         print(f"[ERREUR] {err}")
         return 2
-    bilan = traiter_lot(profil, dossier_entree=args.entree, dossier_sortie=args.sortie)
+    bilan = traiter_lot(profil, dossier_entree=args.entree, dossier_sortie=args.sortie,
+                        forcer=args.forcer)
     afficher_resume(bilan)
     return 1 if bilan.erreurs or bilan.alertes else 0
 

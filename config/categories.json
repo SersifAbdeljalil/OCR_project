@@ -38,7 +38,8 @@
       ],
       "mots_cles": [
         "\\bdiplome\\b",
-        "\\b(deug|licence|master|doctorat|baccalaureat)\\b",
+        "\\b(deug|master|doctorat|baccalaureat)\\b",
+        "\\blicence\\s+(fondamentale|professionnelle|d.etudes|en)\\b|\\bdiplome\\s+de\\s+licence\\b",
         "\\bmention\\b",
         "\\b(confere|decerne)\\b",
         "\\bgrade\\b"

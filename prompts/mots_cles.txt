@@ -1,0 +1,15 @@
+Tu aides à créer une nouvelle catégorie de documents administratifs en français : « $categorie ».
+
+Propose de 3 à 5 mots ou expressions courtes (1 à 4 mots) qui apparaissent dans ce type de document et permettent de le reconnaître.
+
+Règles :
+- Recopie des mots qui sont écrits dans le document ci-dessous.
+- Jamais de nom de personne, jamais de nom de société, jamais de numéro ni de montant.
+- Des mots typiques du TYPE de document (titre, rubriques), pas des informations propres à ce document.
+
+Réponds uniquement en JSON : {"mots_cles": ["...", "..."]}
+
+DOCUMENT :
+<<<
+$texte
+>>>

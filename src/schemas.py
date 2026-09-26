@@ -87,9 +87,11 @@ class DocumentSortie(BaseModel):
         # ceux que le document ne contient pas valent None.
         self.champs = {nom: self.champs.get(nom) for nom in attendus}
 
-        # Sous le seuil, le document DOIT passer par la validation humaine.
+        # Sous le seuil, le document DOIT passer par la validation humaine...
+        # ... sauf s'il vient justement d'etre valide par l'humain (validation.py).
+        valide_par_humain = (info.context or {}).get("valide_par_humain", False)
         if (self.confiance_classification < SEUIL_CONFIANCE
-                and not self.necessite_validation_humaine):
+                and not self.necessite_validation_humaine and not valide_par_humain):
             raise ValueError(f"confiance < {SEUIL_CONFIANCE} : "
                              "necessite_validation_humaine doit valoir true")
         return self

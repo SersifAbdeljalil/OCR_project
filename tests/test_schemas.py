@@ -139,6 +139,14 @@ def test_confiance_basse_impose_validation_humaine():
                          necessite_validation_humaine=False))
 
 
+def test_confiance_basse_acceptee_apres_validation_humaine():
+    """validation.py : l'humain a valide, la confiance d'origine reste une information."""
+    doc = DocumentSortie.model_validate(
+        document(confiance_classification=0.60, necessite_validation_humaine=False),
+        context={**CONTEXTE, "valide_par_humain": True})
+    assert doc.confiance_classification == 0.60 and not doc.necessite_validation_humaine
+
+
 # --- 3. Confidentialite ----------------------------------------------------
 def test_erreur_ne_recopie_jamais_les_valeurs():
     """Une erreur de validation ne doit pas faire fuiter une valeur sensible."""

@@ -632,6 +632,59 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
       (auto-entrepreneur) » (écrit ainsi dans le document) alors que la vérité terrain
       attend « Oasis Services Nettoyage » : à trancher (convention de la vérité terrain,
       ou nettoyage des parenthèses).
+- FAIT : décisions sur b11 (2026-09-26).
+  - f03 : verite_terrain.json aligné sur le document (« Oasis Services Nettoyage
+    (auto-entrepreneur) »). RÈGLE : l'agent recopie fidèlement, on ne transforme pas les noms.
+  - Mot-clé de CATÉGORIE diplomes : « licence » seul retiré ; remplacé par
+    « licence fondamentale / professionnelle / d'etudes / en » et « diplome de licence ».
+    Le mot-clé du SOUS-DOSSIER Licence reste « licence ». La règle métier « attestation de
+    réussite » garde « licence » (elle exige aussi « attestation de réussite »).
+    Vérifié : seul f10 change (faible -> net) sur les factures fictives natives ; docs_test
+    (4 réels) identique avant/après.
+  - `run_pipeline.py --forcer` (traiter_lot(forcer=True)) : retraite un document déjà vu ;
+    un même fichier présent deux fois DANS le lot reste traité une seule fois.
+- BESOIN pour l'interface (b12b), décidé le 2026-09-26 : pour CHAQUE document traité
+  (rangé ou A_Valider), l'utilisateur doit pouvoir voir le contenu (champs extraits et
+  texte), copier chaque valeur avec une icône de copie, corriger une valeur fausse, puis
+  cliquer sur « Valider » pour enregistrer les corrections dans le dossier (.json et .txt).
+  L'interface n'écoute QUE sur 127.0.0.1 (jamais accessible depuis le réseau).
+- FAIT (étape b12a) : `src/validation.py` (logique sans interface).
+  - `lister_documents(sortie)` : tous les .json de Folder_Sortie (A_Valider compris) ->
+    FicheDocument(chemin, dossier, categorie, statut « a_valider / autres / valide /
+    a_verifier / range », raison, alertes, confiance).
+  - `charger_document(chemin_json)` : info complète, champs, texte (.txt), original
+    (copie à côté : même base, ou <base>_original.<ext>), pages OCR (lignes, confiance,
+    cadre), historique.
+  - `enregistrer_corrections(chemin_json, corrections, categorie=None)` : valeurs
+    renormalisées selon le type (config/extraction.json : date, montant, chiffres + longueur,
+    texte ; champs libres : espaces réduits) ; valeur invalide -> ErreurValidation (nom du
+    champ seulement) et RIEN n'est modifié ; chaîne vide -> champ vidé ; historique
+    {champ, ancienne_valeur, nouvelle_valeur, date} seulement si la valeur change, plus
+    une entrée {action, alertes_avant, date} ; changement de catégorie : entrée « type »,
+    champs absents de la nouvelle catégorie retirés (historique -> None) ; contrôle des
+    totaux (alertes renvoyées) ; necessite_validation_humaine -> false, confiance
+    d'origine gardée (schemas.py accepte ce cas avec context « valide_par_humain ») ;
+    raison / alertes / categorie_proposee retirées, « pages » (lignes OCR) gardées,
+    « valide_le » ajouté. Nom ou dossier changé : nouveaux .json/.txt écrits, original
+    déplacé, anciens fichiers retirés (doublons _1 gérés) ; sinon réécriture sur place
+    (écriture sûre : fichier provisoire puis remplacement).
+  - `rejeter_document()` : type « autres » -> Autres/ (action « rejet »).
+  - Nouvelle catégorie : `proposer_mots_cles(nom, texte, client)` (prompts/mots_cles.txt,
+    3 à 5 propositions, sans chiffre, sans doublon ; liste vide si le moteur échoue) ;
+    l'humain confirme ; `creer_categorie(nom, mots_cles, chemin_json)` : nom normalisé
+    (`nom_de_categorie`), mots-clés -> regex (`mot_cle_vers_regex`), dossier = nom avec
+    majuscule, champs génériques, nom_fichier <nom>_<titre>_<personne> ; registre candidat
+    vérifié par config.verifier_registre AVANT écriture (sinon refus, registre intact) ;
+    cache du registre vidé ; puis rangement du document.
+  - Journal : data/logs/validation_<AAAAMMJJ>.jsonl (action, nom masqué, catégorie,
+    nombre de corrections, déplacé, renommé) ; jamais de valeur (testé).
+  - `tests/test_validation.py` : 28 tests, documents FICTIFS, dossiers et registre
+    temporaires (le vrai registre n'est jamais modifié par les tests). 548 tests rapides
+    au total.
+  - Test de bout en bout réel relancé après les décisions b11 (navigateur fermé) :
+    PASSE. 5 rangés (f01, f02, f03, f07, f10 : 7/7 champs chacun), 5 A_Valider (f04,
+    f05, f06, f08, f09), 0 erreur, prudence : aucune, danger : aucun. 373 s (OCR 12 s,
+    LLM 358 s), pic OCR 1264 Mo. Seul changement par rapport à b11 : f10 rangé.
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
@@ -681,5 +734,6 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b9) FAIT : src/classifier.py.
    b10a) FAIT : src/extractor.py, partie regex.
    b10b) FAIT : champs libres par LLM + fusion.
-   b11) FAIT (à valider) : src/pipeline.py, run_pipeline.py, INSTALLATION.md.
-   Suite : app/streamlit_app.py, avec un test pour chacun (dossier tests/).
+   b11) FAIT : src/pipeline.py, run_pipeline.py, INSTALLATION.md.
+   b12a) FAIT : src/validation.py (logique de validation, sans interface).
+   Suite : b12b app/streamlit_app.py (voir BESOIN ci-dessus), avec un test pour chacun (dossier tests/).

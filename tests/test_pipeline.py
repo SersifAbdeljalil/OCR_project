@@ -164,6 +164,27 @@ def test_reprise_sans_retraiter(espace):
     assert (e / "Traites" / "f01_fr_standard_natif_1.pdf").exists()
 
 
+def test_forcer_retraite_un_document_deja_vu(espace):
+    e, s, _ = espace
+    deposer(e, ["f01_fr_standard_natif.pdf"])
+    lancer(espace)
+    deposer(e, ["f01_fr_standard_natif.pdf"])
+    moteur = MoteurFixe()
+    bilan = lancer(espace, moteur=moteur, forcer=True)
+    assert bilan.deja_traites == 0 and bilan.ranges == 1 and moteur.appels == 1
+    assert len(list((s / "Factures").glob("*.json"))) == 2          # nouvelle sortie _1
+
+
+def test_option_forcer_de_run_pipeline(monkeypatch):
+    import run_pipeline
+    recus = {}
+    monkeypatch.setattr(run_pipeline, "traiter_lot",
+                        lambda profil, **kw: recus.update(kw) or pipeline.BilanLot())
+    monkeypatch.setattr(run_pipeline, "afficher_resume", lambda bilan: None)
+    monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--forcer"])
+    assert run_pipeline.main() == 0 and recus["forcer"] is True
+
+
 def test_meme_fichier_deux_fois_dans_un_lot(espace):
     e, s, _ = espace
     deposer(e, ["f01_fr_standard_natif.pdf"])
@@ -173,16 +194,31 @@ def test_meme_fichier_deux_fois_dans_un_lot(espace):
 
 
 # --- 3. Documents a probleme -----------------------------------------------------------------
-def test_licence_de_logiciel_rend_la_facture_faible(espace):
-    """FAIBLESSE CONNUE du registre : f10 contient « Licence antivirus » ; le mot-cle
-    « licence » (diplomes) donne 1 point diplomes -> verdict « faible » -> 0.60 ->
-    A_Valider, meme si le moteur est d'accord."""
+def test_licence_de_logiciel_ne_rend_plus_la_facture_faible(espace):
+    """Decision b11 : « Licence antivirus » (f10) ne compte plus pour les diplomes ;
+    le mot-cle de categorie exige une forme propre aux diplomes."""
     e, s, _ = espace
     deposer(e, ["f10_fr_montants_europeens_natif.pdf"])
     bilan = lancer(espace)
-    assert bilan.a_valider == 1
-    info = json.loads(next((s / "A_Valider").glob("*.json")).read_text(encoding="utf-8"))
-    assert "mots-cles : faible (factures)" in info["alertes"]
+    assert bilan.ranges == 1 and bilan.a_valider == 0
+
+
+@pytest.mark.parametrize("texte, points", [
+    ("Licence antivirus (10 postes)", 0),
+    ("Licence fondamentale en économie", 1),
+    ("Licence professionnelle Comptabilité", 1),
+    ("Licence d'études fondamentales", 1),
+    ("Licence en sciences économiques", 1),
+    ("Diplôme de Licence", 2),                  # « diplome » + « diplome de licence »
+])
+def test_mot_cle_licence_de_categorie(texte, points):
+    from src.rules import calculer_scores
+    assert calculer_scores(texte, REGISTRE)["diplomes"] == points
+
+
+def test_sous_dossier_licence_inchange():
+    from src.config import choisir_sous_dossier, trouver_categorie
+    assert choisir_sous_dossier(trouver_categorie(REGISTRE, "diplomes"), "Licence") == "Licence"
 
 
 def test_fichier_illisible_en_a_valider(espace):
