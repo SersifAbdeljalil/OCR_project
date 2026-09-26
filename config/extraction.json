@@ -18,6 +18,31 @@
     "et de separateurs, qui peuvent completer la valeur (ex. RIB : 4 groupes sur 4 lignes)."
   ],
   "tolerance_ocr_etiquettes": true,
+  "_explication_llm": [
+    "champs_libres_llm : SEULS champs que le LLM peut remplir (texte libre). Les champs",
+    "structures (dates, montants, numeros, CIN, RIB, IBAN, ICE) restent aux regex : s'ils",
+    "sont absents, ils restent absents. Les champs d'une categorie qui ne sont ni ici ni",
+    "dans 'champs' (ex. duree, periode, adresse) ne sont extraits par personne.",
+    "descriptions_champs_libres : une ligne par champ, reprise dans prompts/extraction.txt."
+  ],
+  "champs_libres_llm": ["fournisseur", "titulaire", "beneficiaire", "objet", "etablissement",
+                        "intitule", "mention", "emetteur", "parties", "banque", "titre",
+                        "personne", "organisme"],
+  "descriptions_champs_libres": {
+    "fournisseur": "nom de l'entreprise ou de la personne qui émet la facture",
+    "titulaire": "nom de la personne à qui le document est délivré",
+    "beneficiaire": "nom de la personne concernée par le document",
+    "objet": "objet du document, en quelques mots",
+    "etablissement": "établissement qui délivre le diplôme",
+    "intitule": "intitulé du diplôme",
+    "mention": "mention obtenue",
+    "emetteur": "organisme ou personne qui délivre le document",
+    "parties": "noms des parties signataires",
+    "banque": "nom de la banque",
+    "titre": "titre du document",
+    "personne": "nom de la personne principale concernée",
+    "organisme": "organisme qui émet le document"
+  },
   "champs": {
     "numero": {
       "type": "texte",

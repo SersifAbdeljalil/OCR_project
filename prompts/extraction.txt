@@ -1,0 +1,16 @@
+Tu lis un document administratif en français (catégorie : $categorie).
+
+Informations à extraire :
+$champs
+
+Règles :
+- Recopie chaque valeur EXACTEMENT comme elle est écrite dans le document, avec les mêmes mots.
+- Si une information n'est pas dans le document, réponds null. N'invente jamais, ne déduis rien.
+- Ne donne que les informations demandées.
+
+Réponds uniquement en JSON, avec exactement ces clés.
+
+DOCUMENT :
+<<<
+$texte
+>>>

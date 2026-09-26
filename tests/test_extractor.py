@@ -15,8 +15,8 @@ import pytest
 from src.config import charger_registre
 from src.extract_text import extraire
 from src.extractor import (ErreurConfigExtraction, LigneSource, charger_config,
-                           extraire_champs, lignes_du_document, normaliser_ligne,
-                           tolerer_ocr)
+                           extraire_champs, extraire_champs_libres, extraire_document,
+                           lignes_du_document, localiser, normaliser_ligne, tolerer_ocr)
 from src.ocr_worker import LigneOCR, PageOCR
 
 REGISTRE = charger_registre()
@@ -337,6 +337,137 @@ def test_ni_valeur_dans_les_alertes_ni_dans_repr():
     tout = repr(r) + " ".join(r.alertes)
     for secret in ("999888", "FA-2026-0007", "001234567000089", "99978000"):
         assert secret not in tout
+
+
+# --- 8 bis. Champs LIBRES par LLM (simule) et fusion ----------------------------------------
+class FausseReponse:
+    def __init__(self, donnees):
+        self._d = donnees
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._d
+
+
+class FausseSession:
+    """Faux Ollama : renvoie la reponse JSON donnee et garde les requetes."""
+
+    def __init__(self, reponse, panne=None):
+        self.reponse, self.panne, self.posts = reponse, panne, []
+
+    def post(self, url, json=None, timeout=None):
+        self.posts.append(json)
+        if self.panne:
+            raise self.panne
+        return FausseReponse({"response": self.reponse if isinstance(self.reponse, str)
+                              else __import__("json").dumps(self.reponse)})
+
+
+def client_simule(reponse, panne=None):
+    from src.llm import ClientOllama
+    return ClientOllama(session=FausseSession(reponse, panne))
+
+
+def test_llm_ne_remplit_que_les_champs_libres():
+    client = client_simule({"fournisseur": "Société Exemple SARL"})
+    r = extraire_document(natif(FACTURE), "factures", client, REGISTRE, CONFIG)
+    assert r.valeurs()["fournisseur"] == "Société Exemple SARL"
+    assert r.champs["fournisseur"].methode == "llm"
+    assert r.champs["montant_ttc"].methode == "regex"
+    schema = client.session.posts[0]["format"]
+    assert set(schema["properties"]) == {"fournisseur"}          # facture : un seul champ libre
+    assert "- fournisseur : nom de l'entreprise" in client.session.posts[0]["prompt"]
+
+
+def test_champs_libres_selon_la_categorie():
+    client = client_simule({"titulaire": "Prénom Nom", "intitule": "Licence",
+                            "etablissement": "Faculté Exemple", "mention": "Bien"})
+    texte = ("DIPLÔME DE LICENCE\nFaculté Exemple\nTitulaire : Prénom Nom\nmention Bien\n"
+             "Fait à Rabat, le 12 juillet 2020")
+    r = extraire_document(natif(texte), "diplomes", client, REGISTRE, CONFIG)
+    assert set(client.session.posts[0]["format"]["properties"]) == \
+        {"titulaire", "intitule", "etablissement", "mention"}
+    assert r.valeurs()["titulaire"] == "Prénom Nom"
+    assert r.valeurs()["date_obtention"] == "2020-07-12"          # regex
+
+
+def test_structure_absent_reste_absent():
+    """Meme si le LLM renvoyait une date, elle n'est pas demandee ni lue."""
+    client = client_simule({"fournisseur": "Société Exemple SARL",
+                            "date_facture": "2026-01-01", "montant_ttc": "999"})
+    r = extraire_document(natif("Société Exemple SARL\nFACTURE"), "factures", client,
+                          REGISTRE, CONFIG)
+    assert "date_facture" not in r.champs and "montant_ttc" not in r.champs
+
+
+def test_anti_invention_valeur_rejetee():
+    client = client_simule({"fournisseur": "Maroc Telecom SA"})     # pas dans le texte
+    r = extraire_document(natif(FACTURE), "factures", client, REGISTRE, CONFIG)
+    assert "fournisseur" not in r.champs
+    assert "fournisseur : valeur du moteur absente du texte source, rejetee" in r.alertes
+    assert r.necessite_validation_humaine
+
+
+@pytest.mark.parametrize("valeur", ["SOCIETE EXEMPLE SARL", "societe  exemple   sarl",
+                                    "Société\nExemple SARL"])
+def test_anti_invention_tolerant_accents_casse_espaces(valeur):
+    client = client_simule({"fournisseur": valeur})
+    r = extraire_document(natif(FACTURE), "factures", client, REGISTRE, CONFIG)
+    assert "fournisseur" in r.champs
+
+
+def test_valeur_sur_deux_lignes_retrouvee():
+    lignes = [LigneSource("Atlas Fournitures", 0.99), LigneSource("Bureau SARL", 0.85)]
+    trouvee, ligne, confiance = localiser("Atlas Fournitures Bureau SARL", lignes)
+    assert trouvee and ligne == 0 and confiance == 0.85
+
+
+def test_valeur_llm_sur_ligne_ocr_peu_sure():
+    lignes = [LigneSource("Société Exemple SARL", 0.70), LigneSource("FACTURE", 0.99)]
+    r = extraire_champs_libres(lignes, "factures",
+                               client_simule({"fournisseur": "Société Exemple SARL"}), REGISTRE)
+    assert r.champs["fournisseur"].confiance == 0.70
+    assert "fournisseur : ligne OCR peu sure (confiance 0.70)" in r.alertes
+    assert r.necessite_validation_humaine
+
+
+def test_null_reste_absent_sans_alerte():
+    r = extraire_champs_libres(natif(FACTURE), "factures", client_simule({"fournisseur": None}),
+                               REGISTRE)
+    assert r.champs == {} and r.alertes == [] and not r.necessite_validation_humaine
+
+
+def test_moteur_en_panne_echec_propre():
+    import requests
+    client = client_simule({}, panne=requests.exceptions.ConnectionError("coupe"))
+    r = extraire_document(natif(FACTURE), "factures", client, REGISTRE, CONFIG)
+    assert "fournisseur" not in r.champs and r.valeurs()["montant_ttc"] == Decimal("1200.00")
+    assert any(a.startswith("champs libres : moteur indisponible") for a in r.alertes)
+    assert r.necessite_validation_humaine
+
+
+def test_sans_client_regex_seulement():
+    r = extraire_document(natif(FACTURE), "factures", None, REGISTRE, CONFIG)
+    assert "fournisseur" not in r.champs and "numero" in r.champs
+
+
+def test_categorie_decouverte_champs_generiques_llm():
+    client = client_simule({"titre": "Bulletin de paie", "personne": "Prénom Nom",
+                            "organisme": "Société Exemple"})
+    texte = "Bulletin de paie\nSociété Exemple\nSalarié : Prénom Nom\nDate : 30/09/2026"
+    r = extraire_document(natif(texte), "bulletin_paie", client, REGISTRE, CONFIG)
+    assert set(client.session.posts[0]["format"]["properties"]) == {"titre", "personne",
+                                                                     "organisme"}
+    assert r.valeurs() == {"date": "2026-09-30", "titre": "Bulletin de paie",
+                           "personne": "Prénom Nom", "organisme": "Société Exemple"}
+
+
+def test_aucune_valeur_llm_dans_alertes_ni_repr():
+    client = client_simule({"fournisseur": "Invention Secrète SA"})
+    r = extraire_document(natif(FACTURE), "factures", client, REGISTRE, CONFIG)
+    assert "Invention" not in repr(r) + " ".join(r.alertes)
 
 
 # --- 9. Regression sur les factures fictives (PDF natifs, sans OCR) ---------------------

@@ -1,5 +1,11 @@
 """
-extractor.py - Extraction des champs STRUCTURES par regex (etape b10a, SANS LLM).
+extractor.py - Extraction des champs d'un document.
+
+    - champs STRUCTURES par regex (etape b10a, sections 1 a 4) ;
+    - champs LIBRES par LLM avec garde-fou anti-invention, puis FUSION (etape b10b,
+      section 5 : extraire_champs_libres, extraire_document).
+
+Partie regex :
 
 Champs : numero, dates (facture, generique, signature, obtention, naissance),
 montants (HT, TVA, TTC / net a payer), CIN, RIB, IBAN, ICE.
@@ -272,7 +278,7 @@ def choisir(nom: str, conf: dict, candidats: list):
 @dataclass
 class ChampExtrait:
     valeur: object = field(repr=False)     # JAMAIS affichee
-    etiquette: int = 0                     # indice de l'etiquette (provenance)
+    etiquette: int = 0                     # indice de l'etiquette (None pour le LLM)
     ligne: int = 0                         # indice de la ligne de la valeur
     page: int = None
     confiance: float = None                # confiance OCR (None si texte natif)
@@ -287,6 +293,7 @@ class ResultatChamps:
     necessite_validation_humaine: bool = False
     controle_totaux: ControleTotaux = None
     statut_totaux: str = None                        # "ok", "ecart", "manquant" ou None
+    duree_llm_s: float = 0.0                         # temps de l'appel LLM (champs libres)
 
     def valeurs(self) -> dict:
         """{nom: valeur} pour le JSON de sortie (Decimal, date ISO, texte)."""
@@ -332,4 +339,104 @@ def extraire_champs(lignes: list, categorie: str, registre: dict = None,
         else:
             res.statut_totaux = "manquant"
         res.necessite_validation_humaine |= controle.necessite_validation_humaine
+    return res
+
+
+# --- 5. Champs LIBRES par LLM (etape b10b) ---------------------------------------------
+def charger_champs_libres(chemin: Path = CHEMIN_CONFIG):
+    """(liste des champs libres autorises au LLM, descriptions pour le prompt)."""
+    brut = json.loads(Path(chemin).read_text(encoding="utf-8"))
+    return brut.get("champs_libres_llm", []), brut.get("descriptions_champs_libres", {})
+
+
+def cle_comparaison(texte: str) -> str:
+    """Forme de comparaison : minuscules, sans accents, espaces reduits a un seul."""
+    t = "".join(c for c in unicodedata.normalize("NFKD", texte or "")
+                if not unicodedata.combining(c)).lower()
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def localiser(valeur: str, lignes: list):
+    """Garde-fou anti-invention : la valeur se retrouve-t-elle dans le texte source ?
+    Comparaison tolerante aux accents, a la casse et aux espaces (y compris sur
+    plusieurs lignes). Renvoie (trouvee, indice de ligne, confiance OCR minimale)."""
+    cible = cle_comparaison(valeur)
+    if not cible:
+        return False, None, None
+    morceaux, debuts, position = [], [], 0
+    for l in lignes:
+        cle = cle_comparaison(l.texte)
+        debuts.append(position)
+        morceaux.append(cle)
+        position += len(cle) + 1                    # +1 : l'espace qui separe les lignes
+    joint = " ".join(morceaux)
+    trouve = joint.find(cible)
+    if trouve < 0:
+        return False, None, None
+    fin = trouve + len(cible)
+    couvertes = [i for i, d in enumerate(debuts) if d < fin and d + len(morceaux[i]) >= trouve]
+    confs = [lignes[i].confiance for i in couvertes if lignes[i].confiance is not None]
+    return True, couvertes[0], (min(confs) if confs else None)
+
+
+def extraire_champs_libres(lignes: list, categorie: str, client, registre: dict = None,
+                           chemin_config: Path = CHEMIN_CONFIG,
+                           nom_prompt: str = "extraction") -> ResultatChamps:
+    """Demande au LLM les SEULS champs libres de la categorie. Chaque valeur doit se
+    retrouver dans le texte source, sinon elle est rejetee (alerte + validation).
+    Ne leve jamais d'exception."""
+    registre = registre or registre_par_defaut()
+    res = ResultatChamps()
+    libres, descriptions = charger_champs_libres(chemin_config)
+    a_demander = [c for c in champs_attendus(registre, categorie) if c in libres]
+    if not a_demander:
+        return res
+    schema = {"type": "object",
+              "properties": {c: {"type": ["string", "null"]} for c in a_demander},
+              "required": a_demander}
+    variables = {"categorie": categorie,
+                 "champs": "\n".join(f"- {c} : {descriptions.get(c, c)}" for c in a_demander)}
+    texte = "\n".join(l.texte for l in lignes)
+    rep = client.appeler(nom_prompt, texte, schema, variables=variables)
+    res.duree_llm_s = rep.duree_s
+    res.alertes += rep.alertes
+    if not rep.ok:
+        res.alertes.append(f"champs libres : moteur indisponible ({rep.erreur})")
+        res.necessite_validation_humaine = True
+        return res
+
+    for nom in a_demander:
+        valeur = rep.donnees.get(nom)
+        if valeur is None or not str(valeur).strip():
+            continue                                  # absent du document : reste absent
+        valeur = re.sub(r"\s+", " ", str(valeur)).strip()
+        trouvee, ligne, confiance = localiser(valeur, lignes)
+        if not trouvee:
+            res.alertes.append(f"{nom} : valeur du moteur absente du texte source, rejetee")
+            res.necessite_validation_humaine = True
+            continue
+        res.champs[nom] = ChampExtrait(valeur, None, ligne, lignes[ligne].page, confiance,
+                                       1, methode="llm")
+        if confiance is not None and confiance < SEUIL_CONFIANCE_LIGNE_OCR:
+            res.alertes.append(f"{nom} : ligne OCR peu sure (confiance {confiance:.2f})")
+            res.necessite_validation_humaine = True
+    return res
+
+
+def extraire_document(lignes: list, categorie: str, client=None, registre: dict = None,
+                      config: dict = None) -> ResultatChamps:
+    """FUSION : champs structures par regex + champs libres par LLM.
+    Sans client (LLM), seuls les champs regex sont extraits. Les deux ensembles de
+    champs sont disjoints : le LLM ne remplace jamais un champ structure."""
+    registre = registre or registre_par_defaut()
+    res = extraire_champs(lignes, categorie, registre, config)
+    if client is None:
+        return res
+    libres = extraire_champs_libres(lignes, categorie, client, registre)
+    for nom, champ in libres.champs.items():
+        if nom not in res.champs:                 # par securite : la regex a priorite
+            res.champs[nom] = champ
+    res.alertes += libres.alertes
+    res.necessite_validation_humaine |= libres.necessite_validation_humaine
+    res.duree_llm_s = libres.duree_llm_s
     return res

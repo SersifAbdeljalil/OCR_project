@@ -516,6 +516,37 @@ On ne demande JAMAIS au LLM son propre chiffre de confiance (non calibré).
     f08 (4 : numéro « NEE-… », HT placé avant son étiquette, TVA « 410,000 » ambiguë,
     TTC absent de l'OCR).
   - Tests : 458 au total.
+- FAIT (étape b10b) : champs LIBRES par LLM + fusion (src/extractor.py, section 5).
+  - config/extraction.json : `champs_libres_llm` (fournisseur, titulaire, beneficiaire,
+    objet, etablissement, intitule, mention, emetteur, parties, banque, titre, personne,
+    organisme) et `descriptions_champs_libres` (une ligne par champ pour le prompt).
+    duree, periode, adresse : extraits par PERSONNE (ni regex, ni LLM) -> à décider.
+  - prompts/extraction.txt : $categorie, $champs (depuis registre + config), $texte.
+    Schéma : UNIQUEMENT les champs libres de la catégorie (string ou null).
+  - `extraire_champs_libres(lignes, categorie, client)` ; `extraire_document(lignes,
+    categorie, client)` = regex + LLM ; champs disjoints : un champ structuré absent reste
+    absent, le LLM ne le devine jamais. Sans client : regex seules.
+  - Garde-fou anti-invention : `localiser(valeur, lignes)` retrouve la valeur dans le texte
+    source (`cle_comparaison` : minuscules, sans accents, espaces réduits, y compris sur
+    plusieurs lignes) ; sinon rejet + alerte + validation. Confiance OCR = min des lignes
+    couvertes ; < 0,90 -> validation. Moteur en panne -> alerte + validation.
+  - Lots : OCR d'abord, puis `with client.modele_charge():` pour tous les appels, puis
+    déchargement (vérifié : oui).
+  - Tests : 472 au total (dont 14 LLM simulé dans test_extractor.py).
+  - docs_synthetiques (regex + LLM) : 55/70 (79 %). Regex : 50/60, ZÉRO valeur fausse.
+    fournisseur : 5/10, et 5 valeurs FAUSSES (toutes présentes dans le texte, donc non
+    arrêtées par l'anti-invention) :
+      f05 et f09 (bilingues) : le LLM rend le CLIENT (« Cabinet Comptable Fictif ») au lieu
+      du fournisseur ; f05 serait rangé SANS validation avec un fournisseur faux (RISQUE) ;
+      f03 : « … (auto-entrepreneur) » en plus (écrit ainsi dans le document) ;
+      f06 : « AR-2026-031 » + arabe (f06 part en A_Valider, arabe > 70 %) ;
+      f08 : « Frold Express Fictit.SARL » (texte OCR recopié fidèlement, ligne 0,84 ->
+      validation).
+    Temps : 10 à 30 s par document (LLM) ; lot de 10 : 159,5 s ; OCR pic 1265 Mo.
+  - docs_test (contient encore les fictives + 4 réels ; catégorie = mots-clés) : 62 champs
+    regex et 22 champs LLM trouvés, 54 absents, 2 rejets anti-invention ; totaux ok 7,
+    écart 1, manquant 1 ; validation 5/14 ; 10 à 50 s par document ; lot 290 s ;
+    pic OCR 1686 Mo (1 relance). rip.pdf : RIB maintenant TROUVÉ (RIB en 4 groupes).
   - Tests : 391 au total.
   - verifier_classifier.py AVANT (b9) -> APRÈS (b9-bis) :
       3 CV              : rangés diplomes 0.90 -> A_Valider 0.60 ; cv.jpg : le moteur
@@ -564,5 +595,6 @@ b) Découpage en modules, UN MODULE (ou une petite paire) PAR ÉTAPE, avec son t
    b8) FAIT : src/llm.py.
    b9) FAIT : src/classifier.py.
    b10a) FAIT : src/extractor.py, partie regex.
-   Suite : b10b (extractor.py, champs libres par LLM), src/pipeline.py, src/pipeline.py,
+   b10b) FAIT : champs libres par LLM + fusion.
+   Suite : src/pipeline.py, src/pipeline.py,
    app/streamlit_app.py, avec un test pour chacun (dossier tests/).
